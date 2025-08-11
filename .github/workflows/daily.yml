@@ -1,13 +1,67 @@
-- name: Ping Discord (text only)
-  env:
-    WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-  run: |
-    # Secret が入っているかを確認
-    if [ -z "${WEBHOOK:-}" ]; then
-      echo "WEBHOOK is EMPTY (Actions Secrets not set?)"
-      exit 1
-    fi
-    echo "WEBHOOK length = $(printf %s "${WEBHOOK}" | wc -c)"
-    # テキストだけ送ってみる
-    curl -sS -X POST -H "Content-Type: application/json" \
-      -d "{\"content\":\"Ping from GitHub Actions $(date -u)\"}" "$WEBHOOK"
+name: LargeCap Daily to Discord (debug)
+on:
+  workflow_dispatch: {}
+jobs:
+  run-and-send:
+    runs-on: ubuntu-latest
+    env:
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 1) まずWebhook自体が使えるか"テキストのみ"で叩く
+ 　　　- name: Ping Discord (text only)
+　　　　  env:
+   　　　　 WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+ 　　　　 run: |
+ 　　　　   # Secret が入っているかを確認
+　　　　    if [ -z "${WEBHOOK:-}" ]; then
+    　　　　  echo "WEBHOOK is EMPTY (Actions Secrets not set?)"
+   　　　　   exit 1
+   　　　　 fi
+    　　　　echo "WEBHOOK length = $(printf %s "${WEBHOOK}" | wc -c)"
+   　　　　 # テキストだけ送ってみる
+    　　　　curl -sS -X POST -H "Content-Type: application/json" \
+      　　　　-d "{\"content\":\"Ping from GitHub Actions $(date -u)\"}" "$WEBHOOK"
+
+
+      # 2) 本処理を実行（画像/CSV生成）
+      - name: Run compare & trails
+        run: |
+          python run_compare_scheduler.py --repeat 1 --trails --hours 168 --topn 12 --smooth 5 --label "LargeCap Daily"
+
+      # 3) 生成物を確認（存在＆サイズ）
+      - name: List outputs
+        run: |
+          ls -lah *.png *.csv || true
+
+      # 4) 生成物を"curl"で直接添付送信（ライブラリ経由に問題が無いか確認）
+      - name: Send files via curl
+        if: ${{ hashFiles('largecap_usd_vs_btc.png') != '' }}
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -sS -F "payload_json={\"content\":\"Files from curl\"}" \
+            -F "file1=@largecap_usd_vs_btc.png" \
+            -F "file2=@largecap_compare.csv" \
+            -F "file3=@score_trails_btc_h168_top12.png" \
+            -F "file4=@score_trails_usd_h168_top12.png" \
+            "$WEBHOOK"
+
+      # 5) 念のため、生成物をArtifactsにも保存（見て中身確認）
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: outputs
+          path: |
+            *.png
+            *.csv
