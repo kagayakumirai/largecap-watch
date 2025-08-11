@@ -1,0 +1,37 @@
+# --- Large-Cap Strength (USD vs BTC) Compare ---
+
+universe_ids:
+  - bitcoin
+  - ethereum
+  - binancecoin
+  - solana
+  - ripple
+  - cardano
+  - dogecoin
+  - tron
+  - avalanche-2
+  - chainlink
+  - toncoin
+  - polkadot
+  - polygon
+  - litecoin
+
+weights_usd:
+  pct_1h: 0.40
+  pct_24h: 0.40
+  pct_7d: 0.20
+use_volume_factor_usd: true
+volume_factor_weight_usd: 0.10
+
+weights_btc:
+  pct_1h_btc: 0.50
+  pct_24h_btc: 0.35
+  pct_7d_btc: 0.15
+use_volume_factor_btc: true
+volume_factor_weight_btc: 0.10
+
+threshold_usd: 0.0
+threshold_btc: 0.0
+
+out_csv: largecap_compare.csv
+out_png_scatter: largecap_usd_vs_btc.png

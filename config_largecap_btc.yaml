@@ -1,0 +1,28 @@
+# --- Large-Cap Strategy Config (BTC建て) ---
+universe_ids:
+  - ethereum
+  - binancecoin
+  - solana
+  - ripple
+  - cardano
+  - dogecoin
+  - tron
+  - avalanche-2
+  - chainlink
+  - toncoin
+  - polkadot
+  - polygon
+  - litecoin
+
+# 重み（短期寄り推奨）
+weights:
+  pct_1h_btc: 0.50
+  pct_24h_btc: 0.35
+  pct_7d_btc: 0.15
+
+use_volume_factor: true      # USD出来高をボーナス加点
+volume_factor_weight: 0.10
+
+top_n: 10
+out_csv: largecap_strength_btc.csv
+out_png: largecap_strength_btc.png
