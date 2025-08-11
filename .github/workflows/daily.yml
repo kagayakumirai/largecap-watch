@@ -19,19 +19,19 @@ jobs:
           pip install -r requirements.txt
 
     # 1) まずWebhook自体が使えるか"テキストのみ"で叩く
- 　　- name: Ping Discord (text only)
-      env:
-        WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-      run: |
-      # Secret が入っているかを確認
-        if [ -z "${WEBHOOK:-}" ]; then
-          echo "WEBHOOK is EMPTY (Actions Secrets not set?)"
-          exit 1
-        fi
-        echo "WEBHOOK length = $(printf %s "${WEBHOOK}" | wc -c)"
-        # テキストだけ送信（届けば Webhook OK）
-        curl -sS -X POST -H "Content-Type: application/json" \
-          -d "{\"content\":\"Ping from GitHub Actions $(date -u)\"}" "$WEBHOOK"
+      - name: Ping Discord (text only)
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          # Secret が入っているかを確認
+          if [ -z "${WEBHOOK:-}" ]; then
+            echo "WEBHOOK is EMPTY (Actions Secrets not set?)"
+            exit 1
+          fi
+          echo "WEBHOOK length = $(printf %s "${WEBHOOK}" | wc -c)"
+          # テキストだけ送信（届けば Webhook OK）
+          curl -sS -X POST -H "Content-Type: application/json" \
+            -d "{\"content\":\"Ping from GitHub Actions $(date -u)\"}" "$WEBHOOK"
 
       # 2) 本処理を実行（画像/CSV生成）
       - name: Run compare & trails
