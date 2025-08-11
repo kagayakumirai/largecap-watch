@@ -9,6 +9,7 @@ compare_strength.py を一定間隔で実行し、
 import argparse, subprocess, time, datetime as dt, sys, shutil
 from pathlib import Path
 import yaml, requests, pandas as pd
+import json
 
 # ---------- helpers ----------
 def now_hm(): return dt.datetime.now().strftime("%Y%m%d_%H%M")
@@ -37,20 +38,28 @@ def summarize(csv_path: Path, top_n: int = 5) -> str:
     except Exception as e:
         return f"(summary failed: {e})"
 
+
+
 def send_discord(webhook_url: str, content: str, attachments: list[Path]):
-    if not webhook_url: return
+    if not webhook_url:
+        print("[WARN] WEBHOOK is empty")
+        return
     files = {}
     for i, p in enumerate([p for p in attachments if p and p.exists()]):
         mime = "image/png" if p.suffix.lower()==".png" else "text/csv"
         files[f"file{i+1}"] = (p.name, p.read_bytes(), mime)
     payload = {"content": content}
+
     try:
         if files:
-            # Discord は multipart で送る。payload_json は文字列で渡す必要があるため簡素化
-            import json
-            r = requests.post(webhook_url, data={"payload_json": json.dumps(payload, ensure_ascii=False)}, files=files, timeout=30)
+            r = requests.post(
+                webhook_url,
+                data={"payload_json": json.dumps(payload, ensure_ascii=False)},
+                files=files, timeout=30
+            )
         else:
             r = requests.post(webhook_url, json=payload, timeout=30)
+        print(f"[DISCORD] status={r.status_code} body={r.text[:200]}")
         r.raise_for_status()
         print(f"[OK] sent to Discord ({len(files)} attachments)")
     except Exception as e:
