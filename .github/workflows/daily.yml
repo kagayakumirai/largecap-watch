@@ -2,8 +2,9 @@ name: LargeCap Daily to Discord
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/5 * * * *"   # ← 半角の */5
   workflow_dispatch: {}
+
 
 jobs:
   run-and-send:
