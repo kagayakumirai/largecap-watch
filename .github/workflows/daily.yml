@@ -2,8 +2,7 @@ name: LargeCap Daily to Discord
 
 on:
   schedule:
-    # 00:00 UTC = 09:00 JST
-    - cron: "0 0 * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
