@@ -25,7 +25,7 @@ def main():
                     help="描画するスコア（usd または btc）")
     ap.add_argument("--hours", type=int, default=24,
                     help="直近N時間に絞る（例：24）")
-    ap.add_argument("--topn", type=int, default=12,
+    ap.add_argument("--topn", type=int, default=20,
                     help="最終時点の値が高い順に上位N本を表示")
     ap.add_argument("--smooth", type=int, default=1,
                     help="移動平均の窓（1=なし）")
