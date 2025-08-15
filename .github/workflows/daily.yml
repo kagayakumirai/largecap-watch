@@ -42,17 +42,6 @@ jobs:
 
 
 
-import yaml, pathlib
-def show(p):
-    try:
-        cfg=yaml.safe_load(pathlib.Path(p).read_text(encoding='utf-8'))
-        print(f"[{p}] universe_mode={cfg.get('universe_mode')} top_mcap_n={cfg.get('top_mcap_n')} top_n={cfg.get('top_n')}")
-    except Exception as e:
-        print(f"[{p}] (could not read):", e)
-for p in ("config_largecap.yaml","config_largecap_btc.yaml"):
-    show(p)
-PY
-
       - name: Run USD strength (top_n from YAML)
         run: |
           python largecap_strength.py --config config_largecap.yaml
