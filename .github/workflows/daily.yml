@@ -30,7 +30,7 @@ jobs:
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python run_compare_scheduler.py --repeat 1 --trails --hours 168 --topn 12 --smooth 5 \
+          python run_compare_scheduler.py --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
             --webhook-url "$WEBHOOK" --label "LargeCap Daily (USD×BTC)"
 
       # （任意）履歴CSVをコミットして貯める
