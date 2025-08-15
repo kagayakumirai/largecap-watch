@@ -77,7 +77,7 @@ def main():
     # 推移グラフのオプション
     ap.add_argument("--trails", action="store_true", help="推移グラフも作成して送信")
     ap.add_argument("--hours", type=int, default=24, help="推移グラフの時間窓")
-    ap.add_argument("--topn", type=int, default=12, help="推移で描く銘柄数（最終値上位）")
+    ap.add_argument("--topn", type=int, default=20, help="推移で描く銘柄数（最終値上位）")
     ap.add_argument("--smooth", type=int, default=3, help="移動平均窓（1で無効）")
     args = ap.parse_args()
 
