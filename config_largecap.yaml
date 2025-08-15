@@ -14,7 +14,7 @@ out_csv: largecap_strength.csv
 out_png: largecap_strength.png
 
 universe_mode: top_mcap     # manual / top_mcap
-top_mcap_n: 20
+top_mcap_n: 21
 
 # ここは USD だけの追加除外・追加採用（任意）
 exclude_ids:
