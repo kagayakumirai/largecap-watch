@@ -20,6 +20,6 @@ weights:
 use_volume_factor: true
 volume_factor_weight: 0.10
 
-top_n: 10
+top_n: 20
 out_csv: largecap_strength.csv
 out_png: largecap_strength.png
