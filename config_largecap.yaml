@@ -1,16 +1,5 @@
 # --- Large-Cap Strategy Config ---
 universe_ids:
-  - bitcoin
-  - ethereum
-  - binancecoin
-  - solana
-  - ripple
-  - cardano
-  - dogecoin
-  - tron
-  - avalanche-2
-  - chainlink
-  - toncoin
 
 weights:
   pct_1h: 0.40
@@ -26,6 +15,7 @@ out_png: largecap_strength.png
 
 universe_mode: top_mcap     # manual / top_mcap
 top_mcap_n: 20
+
 # ここは USD だけの追加除外・追加採用（任意）
 exclude_ids:
   - paypal-usd        # USD系の新顔
