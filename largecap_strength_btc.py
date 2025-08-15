@@ -49,7 +49,7 @@ def main():
     weights = cfg.get("weights", {})
     use_vol = bool(cfg.get("use_volume_factor", True))
     vol_w = float(cfg.get("volume_factor_weight", 0.1))
-    top_n = int(cfg.get("top_n", 10))
+    top_n = int(cfg.get("top_n", ))    # 10削除
     out_csv = cfg.get("out_csv", "largecap_strength_btc.csv")
     out_png = cfg.get("out_png", "largecap_strength_btc.png")
 
