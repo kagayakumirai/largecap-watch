@@ -9,7 +9,7 @@ jobs:
   run-and-send:
     runs-on: ubuntu-latest
     permissions:
-      contents: write           # CSV を data/ にコミットするなら必要
+      contents: write           # CSV を data/ にコミットするなら必　要
     env:
       MPLBACKEND: Agg           # matplotlib のGUIなしレンダリング
     steps:
