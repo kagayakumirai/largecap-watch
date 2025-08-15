@@ -5,14 +5,13 @@ on:
     - cron: "0 0 * * *"   # ← 半角の */5
   workflow_dispatch: {}
 
-
 jobs:
   run-and-send:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # 履歴CSVをdata/にコミットする場合だけ必要
+      contents: write           # CSV を data/ にコミットするなら必要
     env:
-      MPLBACKEND: Agg
+      MPLBACKEND: Agg           # matplotlib のGUIなしレンダリング
     steps:
       - uses: actions/checkout@v4
 
@@ -23,8 +22,40 @@ jobs:
 
       - name: Install deps
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -U pip
+          # requirements.txt がある前提。無い/不足時はフォールバックで入れる
+          pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
+
+      # ==== ここから Strength (USD/BTC) ====
+
+      # 設定ファイルが本当に反映されているかをログに出す（一時的デバッグ用）
+      - name: Debug strength config (USD/BTC)
+        run: |
+          echo '--- BEGIN config_largecap.yaml ---' ; cat config_largecap.yaml || true
+          echo ; echo '--- BEGIN config_largecap_btc.yaml ---' ; cat config_largecap_btc.yaml || true
+          python - << 'PY'
+import yaml, pathlib
+def show(p):
+    try:
+        cfg=yaml.safe_load(pathlib.Path(p).read_text(encoding='utf-8'))
+        print(f"[{p}] universe_mode={cfg.get('universe_mode')} top_mcap_n={cfg.get('top_mcap_n')} top_n={cfg.get('top_n')}")
+    except Exception as e:
+        print(f"[{p}] (could not read):", e)
+for p in ("config_largecap.yaml","config_largecap_btc.yaml"):
+    show(p)
+PY
+
+      - name: Run USD strength (top_n from YAML)
+        run: |
+          python largecap_strength.py --config config_largecap.yaml
+          ls -l largecap_strength.*
+
+      - name: Run BTC strength (top_n from YAML)
+        run: |
+          python largecap_strength_btc.py --config config_largecap_btc.yaml
+          ls -l largecap_strength_btc.*
+
+      # ==== ここから従来の compare + trails ====
 
       - name: Run compare & send to Discord (with trails)
         env:
@@ -33,17 +64,33 @@ jobs:
           python run_compare_scheduler.py --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
             --webhook-url "$WEBHOOK" --label "LargeCap Daily (USD×BTC)"
 
+      # （任意）Strength の画像も Discord へ
+      - name: Send strength charts to Discord (optional)
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -sS -X POST \
+            -F 'payload_json={"content":"Strength (USD & BTC) — top_n from YAML"}' \
+            -F "file1=@largecap_strength.png;type=image/png" \
+            -F "file2=@largecap_strength_btc.png;type=image/png" \
+            "$WEBHOOK"
+
       # （任意）履歴CSVをコミットして貯める
       - name: Save snapshot CSVs to repo
         run: |
           mkdir -p data
+          # compare のCSV
           ls -1 largecap_compare_*.csv 2>/dev/null | xargs -I{} cp "{}" data/ || true
+          # strength のCSV
+          ls -1 largecap_strength*.csv 2>/dev/null | xargs -I{} cp "{}" data/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/*.csv
+          git add data/*.csv || true
           git commit -m "snapshot: $(date -u +%F_%H%M)" || echo "No changes"
-          git push
-      
+          git push || true
+
+      # 成果物を Artifact として保存（PNG/CSV と trails）
       - uses: actions/upload-artifact@v4
         with:
           name: outputs
@@ -56,4 +103,3 @@ jobs:
             largecap_strength_btc.png
             largecap_compare_*.csv
             score_trails_*.png
-
