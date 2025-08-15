@@ -1,0 +1,12 @@
+name: debug-daily
+on: workflow_dispatch
+
+jobs:
+  show:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "HEAD SHA: $GITHUB_SHA"
+          echo '--- .github/workflows/daily.yml with line numbers ---'
+          nl -ba .github/workflows/daily.yml | sed -n '1,200p'
