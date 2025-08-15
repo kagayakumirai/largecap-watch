@@ -1,17 +1,17 @@
 name: LargeCap Daily to Discord
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *"   # ← 半角の */5
-  workflow_dispatch: {}
+    - cron: "0 0 * * *"   # 09:00 JST
 
 jobs:
   run-and-send:
     runs-on: ubuntu-latest
     permissions:
-      contents: write           # CSV を data/ にコミットするなら必　要
+      contents: write
     env:
-      MPLBACKEND: Agg           # matplotlib のGUIなしレンダリング
+      MPLBACKEND: Agg
     steps:
       - uses: actions/checkout@v4
 
@@ -23,24 +23,7 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install -U pip
-          # requirements.txt がある前提。無い/不足時はフォールバックで入れる
           pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
-
-      # ==== ここから Strength (USD/BTC) ====
-
-      - name: Debug strength config (simple, no heredoc)
-        run: |
-          echo '--- BEGIN config_largecap.yaml ---'
-          cat config_largecap.yaml || true
-          echo
-          echo '--- BEGIN config_largecap_btc.yaml ---'
-          cat config_largecap_btc.yaml || true
-          echo
-          echo '--- Parsed values ---'
-          python -c "import yaml, pathlib; cfg=yaml.safe_load(pathlib.Path('config_largecap.yaml').read_text(encoding='utf-8')); print('[config_largecap.yaml]', 'universe_mode=', cfg.get('universe_mode'), 'top_mcap_n=', cfg.get('top_mcap_n'), 'top_n=', cfg.get('top_n'))"
-          python -c "import yaml, pathlib; cfg=yaml.safe_load(pathlib.Path('config_largecap_btc.yaml').read_text(encoding='utf-8')); print('[config_largecap_btc.yaml]', 'universe_mode=', cfg.get('universe_mode'), 'top_mcap_n=', cfg.get('top_mcap_n'), 'top_n=', cfg.get('top_n'))"
-
-
 
       - name: Run USD strength (top_n from YAML)
         run: |
@@ -52,8 +35,6 @@ jobs:
           python largecap_strength_btc.py --config config_largecap_btc.yaml
           ls -l largecap_strength_btc.*
 
-      # ==== ここから従来の compare + trails ====
-
       - name: Run compare & send to Discord (with trails)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -61,39 +42,30 @@ jobs:
           python run_compare_scheduler.py --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
             --webhook-url "$WEBHOOK" --label "LargeCap Daily (USD×BTC)"
 
-      # ==== Strength の画像も  Discord へ
       - name: Send strength charts to Discord (optional)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          # Secret が空ならスキップ
           if [ -z "${WEBHOOK}" ]; then
             echo "WEBHOOK is empty; skip Discord upload."
             exit 0
           fi
-
-          # 画像が無ければスキップ（念のため）
           for f in largecap_strength.png largecap_strength_btc.png; do
             if [ ! -f "$f" ]; then
               echo "$f not found; skip Discord upload."
               exit 0
             fi
           done
-
           curl -sS -X POST \
             -F 'payload_json={"content":"Strength (USD & BTC) — top_n from YAML"}' \
             -F "file1=@largecap_strength.png;type=image/png" \
             -F "file2=@largecap_strength_btc.png;type=image/png" \
             "$WEBHOOK"
 
-
-      # 履歴CSVをコミットして貯める
       - name: Save snapshot CSVs to repo
         run: |
           mkdir -p data
-          # compare のCSV
           ls -1 largecap_compare_*.csv 2>/dev/null | xargs -I{} cp "{}" data/ || true
-          # strength のCSV
           ls -1 largecap_strength*.csv 2>/dev/null | xargs -I{} cp "{}" data/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -101,7 +73,6 @@ jobs:
           git commit -m "snapshot: $(date -u +%F_%H%M)" || echo "No changes"
           git push || true
 
-      # 成果物を Artifact として保存（PNG/CSV と trails）
       - uses: actions/upload-artifact@v4
         with:
           name: outputs
