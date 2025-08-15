@@ -86,7 +86,7 @@ jobs:
             -F "file2=@largecap_strength_btc.png;type=image/png" \
             "$WEBHOOK"
 
-      # （任意）履歴CSVをコミットして貯める
+      # 履歴CSVをコミットして貯める
       - name: Save snapshot CSVs to repo
         run: |
           mkdir -p data
