@@ -15,6 +15,13 @@ import matplotlib.pyplot as plt
 
 COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
+# デフォで外す（両YAMLに何も書かなくても安全に動く）
+DEFAULT_EXCLUDE = {
+    "tether","usd-coin","binance-usd","dai","first-digital-usd",
+    "frax","usdd","terrausd","usde","paypal-usd","euro-coin",
+    "wrapped-bitcoin","staked-ether"
+}
+
 def fetch_markets(ids, vs="usd"):
     params = {
         "vs_currency": vs,
