@@ -73,18 +73,18 @@ jobs:
           fi
 
           # 画像が無ければスキップ（念のため）
-          if [ ! -f largecap_strength.png ] || [ ! -f largecap_strength_btc.png ]; then
-            echo "Charts not found; skip Discord upload."
-            exit 0
-          fi
+          for f in largecap_strength.png largecap_strength_btc.png; do
+            if [ ! -f "$f" ]; then
+              echo "$f not found; skip Discord upload."
+              exit 0
+            fi
+          done
 
           curl -sS -X POST \
             -F 'payload_json={"content":"Strength (USD & BTC) — top_n from YAML"}' \
             -F "file1=@largecap_strength.png;type=image/png" \
             -F "file2=@largecap_strength_btc.png;type=image/png" \
             "$WEBHOOK"
-
-
 
       # （任意）履歴CSVをコミットして貯める
       - name: Save snapshot CSVs to repo
