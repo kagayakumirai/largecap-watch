@@ -43,3 +43,17 @@ jobs:
           git add data/*.csv
           git commit -m "snapshot: $(date -u +%F_%H%M)" || echo "No changes"
           git push
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: outputs
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            largecap_strength.csv
+            largecap_strength.png
+            largecap_strength_btc.csv
+            largecap_strength_btc.png
+            largecap_compare_*.csv
+            score_trails_*.png
+
