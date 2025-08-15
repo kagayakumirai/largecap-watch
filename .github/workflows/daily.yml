@@ -65,14 +65,19 @@ jobs:
       - name: Send strength charts to Discord (optional)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          HAS_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
-        if: env.HAS_WEBHOOK == 'true'
         run: |
+          # Secret が空ならスキップ
+          if [ -z "${WEBHOOK}" ]; then
+            echo "WEBHOOK is empty; skip Discord upload."
+            exit 0
+          fi
+
           curl -sS -X POST \
             -F 'payload_json={"content":"Strength (USD & BTC) — top_n from YAML"}' \
             -F "file1=@largecap_strength.png;type=image/png" \
             -F "file2=@largecap_strength_btc.png;type=image/png" \
             "$WEBHOOK"
+
 
       # （任意）履歴CSVをコミットして貯める
       - name: Save snapshot CSVs to repo
