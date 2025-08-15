@@ -24,6 +24,29 @@ jobs:
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
+      - name: Debug strength config (USD/BTC)
+        run: |
+          echo '--- BEGIN config_largecap.yaml ---'
+          cat config_largecap.yaml || true
+          echo
+          echo '--- BEGIN config_largecap_btc.yaml ---'
+          cat config_largecap_btc.yaml || true
+          echo
+          python - <<'PY'
+          import yaml, pathlib
+          for p in ("config_largecap.yaml","config_largecap_btc.yaml"):
+              try:
+                  cfg=yaml.safe_load(pathlib.Path(p).read_text(encoding="utf-8"))
+              except Exception as e:
+                  print(f"{p} could not read: {e}")
+                  continue
+              ids = cfg.get("universe_ids")
+              print(
+                  f"[{p}] universe_mode={cfg.get('universe_mode')} "
+                  f"top_mcap_n={cfg.get('top_mcap_n')} top_n={cfg.get('top_n')} "
+                  f"ids_type={type(ids).__name__} ids_len={(len(ids) if isinstance(ids,(list,tuple)) else None)}"
+              )
+          PY
 
       - name: Run USD strength (top_n from YAML)
         run: |
