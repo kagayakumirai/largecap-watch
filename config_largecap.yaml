@@ -24,19 +24,10 @@ top_n: 20
 out_csv: largecap_strength.csv
 out_png: largecap_strength.png
 
-# ▼追加
-universe_mode: top_mcap      # manual / top_mcap
-top_mcap_n: 20               # 何銘柄採用するか
-exclude_ids:                 # 常に除外したい CoinGecko id（推奨）
-  - tether
-  - usd-coin
-  - binance-usd
-  - dai
-  - true-usd
-  - first-digital-usd
-  - frax
-  - usdd
-  - terrausd
-  - wrapped-bitcoin
-  - staked-ether
-include_ids: []              # どうしても含めたい id（任意）
+universe_mode: top_mcap     # manual / top_mcap
+top_mcap_n: 20
+# ここは USD だけの追加除外・追加採用（任意）
+exclude_ids:
+  - paypal-usd        # USD系の新顔
+  - euro-coin         # EURステーブル
+include_ids: []       # どうしても入れたい id があればここに
