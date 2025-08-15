@@ -61,7 +61,7 @@ jobs:
           python run_compare_scheduler.py --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
             --webhook-url "$WEBHOOK" --label "LargeCap Daily (USD×BTC)"
 
-      # （任意）Strength の画像も Discord へ
+      # Strength の画像も Discord へ
       - name: Send strength charts to Discord (optional)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
