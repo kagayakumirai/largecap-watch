@@ -52,12 +52,17 @@ jobs:
         run: |
           python largecap_strength.py --config config_largecap.yaml
           ls -l largecap_strength.*
-
+      - name: Pause to avoid 429
+        run: sleep 8
+      
       - name: Run BTC strength (top_n from YAML)
         run: |
           python largecap_strength_btc.py --config config_largecap_btc.yaml
           ls -l largecap_strength_btc.*
-
+      
+      - name: Pause to avoid 429
+        run: sleep 8
+      
       - name: Run compare & send to Discord (with trails)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
