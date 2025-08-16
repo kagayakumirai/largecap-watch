@@ -3,23 +3,90 @@
 # Large-Cap Relative Strength (BTC-quoted)
 # pip install requests pyyaml pandas matplotlib
 
-import argparse, math, sys
-from pathlib import Path
-import requests, yaml
+# 既存の import のままでOK
+import requests
+import yaml
 import pandas as pd
 import matplotlib.pyplot as plt
+import math
+from pathlib import Path
+import sys
 
-def fetch_markets(ids, vs):
-    url = "https://api.coingecko.com/api/v3/coins/markets"
+COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
+
+# ステーブル・WBTCなどはデフォ除外
+DEFAULT_EXCLUDE = {
+    "tether","usd-coin","binance-usd","dai","first-digital-usd",
+    "frax","usdd","terrausd","usde","paypal-usd","euro-coin",
+    "wrapped-bitcoin","staked-ether"
+}
+
+def fetch_markets(ids, vs="usd"):
     params = {
         "vs_currency": vs,
         "ids": ",".join(ids),
         "sparkline": "false",
         "price_change_percentage": "1h,24h,7d",
     }
-    r = requests.get(url, params=params, timeout=30)
+    r = requests.get(COINGECKO_URL, params=params, timeout=30)
     r.raise_for_status()
     return r.json()
+
+def fetch_top_mcap_ids(n=12, exclude=None):
+    """時価総額上位から n 銘柄を返す（exclude を除外）"""
+    if exclude is None:
+        exclude = set()
+    params = {
+        "vs_currency": "usd",
+        "order": "market_cap_desc",
+        "per_page": 250,
+        "page": 1,
+        "sparkline": "false",
+    }
+    r = requests.get(COINGECKO_URL, params=params, timeout=30)
+    r.raise_for_status()
+    rows = r.json()
+
+    ids = []
+    for x in rows:
+        cid = x.get("id")
+        if not cid:
+            continue
+        if cid in exclude:
+            continue
+        ids.append(cid)
+        if len(ids) >= n:
+            break
+    return ids
+
+def resolve_universe(cfg):
+    """
+    YAMLの設定から最終的な id リストを作る。
+    - manual: cfg['universe_ids'] を使用
+    - top_mcap: CoinGeckoから上位を自動取得（exclude/includeを反映）
+    """
+    mode = (cfg.get("universe_mode") or "manual").lower()
+    exclude = set(DEFAULT_EXCLUDE) | set(cfg.get("exclude_ids", []))
+    include = list(cfg.get("include_ids", []))
+
+    if mode == "top_mcap":
+        n = int(cfg.get("top_mcap_n", 12))
+        ids = fetch_top_mcap_ids(n=n, exclude=exclude)
+        # include は先頭優先で重複排除
+        ids = list(dict.fromkeys(include + ids))
+        return ids
+    else:
+        ids = cfg.get("universe_ids")
+        if not isinstance(ids, (list, tuple)) or not ids:
+            raise ValueError("manual モードでは universe_ids を非空の配列で指定してください")
+        # include を先頭に
+        ids = list(dict.fromkeys(list(include) + list(ids)))
+        # exclude は最後に適用（念のため）
+        ids = [c for c in ids if c not in exclude]
+        return ids
+
+
+
 
 def zscore(series):
     s = pd.Series(series, dtype="float64")
