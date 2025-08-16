@@ -86,14 +86,12 @@ jobs:
         run: |
           ls -l *.png *.csv || true
 
-      # ← これを新規追加：クォドラント画像を Discord に送る
       - name: Send quadrant (compare) chart to Discord
-        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}   # ← ここを必ず ${{ }} で囲む
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         shell: bash
         run: |
-          # タイムスタンプ付きがあればそれを、無ければ固定名を拾う
           png=$(ls -t largecap_usd_vs_btc_*.png 2>/dev/null | head -1 || echo largecap_usd_vs_btc.png)
           if [ -f "$png" ]; then
             echo "Uploading $png"
@@ -102,8 +100,9 @@ jobs:
               -F "file1=@${png};type=image/png" \
               "$WEBHOOK"
           else
-            echo "Quadrant PNG not found."
+            echo "Quadrant PNG not found. skip."
           fi
+
 
       
       - name: Send strength charts to Discord (optional)
