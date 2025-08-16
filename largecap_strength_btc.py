@@ -4,6 +4,7 @@
 # pip install requests pyyaml pandas matplotlib
 
 # 既存の import のままでOK
+import argparse            # ← これを追加
 import requests
 import yaml
 import pandas as pd
