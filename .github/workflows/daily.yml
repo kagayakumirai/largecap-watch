@@ -86,12 +86,16 @@ jobs:
         run: |
           ls -l *.png *.csv || true
 
+      # ← ここを修正（if をやめて、シェルで空判定）
       - name: Send quadrant (compare) chart to Discord
-        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}   # ← ここを必ず ${{ }} で囲む
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         shell: bash
         run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "WEBHOOK is empty; skip Discord upload."
+            exit 0
+          fi
           png=$(ls -t largecap_usd_vs_btc_*.png 2>/dev/null | head -1 || echo largecap_usd_vs_btc.png)
           if [ -f "$png" ]; then
             echo "Uploading $png"
