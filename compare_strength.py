@@ -128,7 +128,7 @@ def main():
     out_dir = cfg_path.parent
     log(f"out_dir={out_dir}")
 
-    ids = cfg["universe_ids"]
+    ids = resolve_universe(cfg)
 
     try:
         usd = fetch(ids, "usd")
@@ -210,5 +210,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
