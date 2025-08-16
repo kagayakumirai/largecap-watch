@@ -111,8 +111,19 @@ def main():
     ap.add_argument("--config", type=str, default="config_largecap_btc.yaml")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    ids = cfg["universe_ids"]
+    cfg_path = Path(args.config)
+    if not cfg_path.exists():
+        print(f"[ERR] config not found: {cfg_path}", file=sys.stderr)
+        sys.exit(1)
+
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+
+    # ★ ここで最終的な universe を確定（None を回避）
+    ids = resolve_universe(cfg)     # ← これに差し替え
+
+    # あとは既存の処理（fetch_markets(ids, vs="btc") など）をそのまま
+    data = fetch_markets(ids, vs="btc")
+
     weights = cfg.get("weights", {})
     use_vol = bool(cfg.get("use_volume_factor", True))
     vol_w = float(cfg.get("volume_factor_weight", 0.1))
