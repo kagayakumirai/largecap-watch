@@ -53,7 +53,7 @@ jobs:
           python largecap_strength.py --config config_largecap.yaml
           ls -l largecap_strength.*
       - name: Pause to avoid 429
-        run: sleep 8
+        run: sleep 12
       
       - name: Run BTC strength (top_n from YAML)
         run: |
@@ -61,7 +61,7 @@ jobs:
           ls -l largecap_strength_btc.*
       
       - name: Pause to avoid 429
-        run: sleep 8
+        run: sleep 12
       
       - name: Run compare & send to Discord (with trails)
         env:
