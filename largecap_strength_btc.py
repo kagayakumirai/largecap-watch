@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import math
 from pathlib import Path
 import sys
+import os, time, requests
 
 COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
@@ -21,6 +22,25 @@ DEFAULT_EXCLUDE = {
     "wrapped-bitcoin","staked-ether"
 }
 
+def _cg_get(params, tries=5):
+    # APIキーをSecretsから使う場合（任意）
+    headers = {}
+    api_key = os.getenv("COINGECKO_API_KEY") or params.pop("x_cg_api_key", None)
+    if api_key:
+        # プランによりヘッダ名が異なるため両方入れておく（どちらかが有効）
+        headers["x-cg-pro-api-key"] = api_key
+        headers["x-cg-demo-api-key"] = api_key
+
+    for i in range(tries):
+        r = requests.get(COINGECKO_URL, params=params, headers=headers, timeout=30)
+        if r.status_code != 429:
+            r.raise_for_status()
+            return r.json()
+        wait = int(r.headers.get("Retry-After", "0")) or min(60, 2 ** i * 2)
+        print(f"[WARN] 429 from CoinGecko. wait {wait}s and retry {i+1}/{tries}", flush=True)
+        time.sleep(wait)
+    raise RuntimeError("CoinGecko 429: exceeded retries")
+
 def fetch_markets(ids, vs="usd"):
     params = {
         "vs_currency": vs,
@@ -28,9 +48,7 @@ def fetch_markets(ids, vs="usd"):
         "sparkline": "false",
         "price_change_percentage": "1h,24h,7d",
     }
-    r = requests.get(COINGECKO_URL, params=params, timeout=30)
-    r.raise_for_status()
-    return r.json()
+    return _cg_get(params)
 
 def fetch_top_mcap_ids(n=12, exclude=None):
     """時価総額上位から n 銘柄を返す（exclude を除外）"""
