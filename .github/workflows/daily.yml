@@ -63,13 +63,13 @@ jobs:
       # USD/BTC strength の後
       - name: Pause to avoid 429
         run: |
-        # 60〜90秒のランダム待機（同時刻集中をズラす）
-        python - <<'PY'
+          # 60〜90秒のランダム待機（同時刻集中をズラす）
+          python - <<'PY'
       import random, time
       wait = 60 + random.randint(0,30)
       print(f"sleep {wait}s to avoid 429"); time.sleep(wait)
       PY
-
+      
       - name: Pause to avoid 429
         run: sleep 12
       
