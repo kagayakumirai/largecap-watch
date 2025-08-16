@@ -193,7 +193,8 @@ def main():
     out_png = cfg.get("out_png", "largecap_strength.png")
 
     # 取得
-    data = fetch_markets_by_ids(ids, vs="usd")
+    data = fetch_markets(ids, vs="usd")
+
     if not data:
         print("[ERR] empty response from CoinGecko", file=sys.stderr)
         sys.exit(2)
