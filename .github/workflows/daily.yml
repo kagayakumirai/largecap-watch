@@ -73,6 +73,7 @@ jobs:
       - name: Pause to avoid 429
         run: sleep 12
       
+      # --- Compare & send to Discord（※既存のステップ） ---
       - name: Run compare & send to Discord (with trails)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -80,6 +81,31 @@ jobs:
           python run_compare_scheduler.py --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
             --webhook-url "$WEBHOOK" --label "LargeCap Daily (USD×BTC)"
 
+      # 作られた PNG を確認（デバッグ）
+      - name: List generated PNG/CSV
+        run: |
+          ls -l *.png *.csv || true
+
+      # ← これを新規追加：クォドラント画像を Discord に送る
+      - name: Send quadrant (compare) chart to Discord
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          # タイムスタンプ付きがあればそれを、無ければ固定名を拾う
+          png=$(ls -t largecap_usd_vs_btc_*.png 2>/dev/null | head -1 || echo largecap_usd_vs_btc.png)
+          if [ -f "$png" ]; then
+            echo "Uploading $png"
+            curl -sS -X POST \
+              -F 'payload_json={"content":"USD×BTC quadrant (latest)"}' \
+              -F "file1=@${png};type=image/png" \
+              "$WEBHOOK"
+          else
+            echo "Quadrant PNG not found."
+          fi
+
+      
       - name: Send strength charts to Discord (optional)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
