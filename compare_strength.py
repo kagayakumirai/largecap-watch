@@ -12,66 +12,59 @@ import json, time, pathlib, requests
 DATA_DIR = pathlib.Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 UNIVERSE_CACHE = DATA_DIR / "universe_cache.json"
+import requests, yaml, pandas as pd, matplotlib.pyplot as plt
+from pathlib import Path
+import math, sys
 
-def fetch_top_mcap_ids(n, exclude, retries=3, backoff=3):
-    """時価総額降順の上位N idを取得（excludeはidのset）。失敗時はキャッシュにフォールバック。"""
-    params = dict(
-        vs_currency="usd",
-        order="market_cap_desc",
-        per_page=250, page=1,
-        price_change_percentage="1h,24h,7d"
-    )
-    last_err = None
-    for k in range(retries):
-        try:
-            r = requests.get(CG_MARKETS, params=params, timeout=30)
-            if r.status_code == 429:
-                time.sleep(backoff * (k+1))
-                continue
-            r.raise_for_status()
-            rows = r.json()
-            ids = []
-            for c in rows:
-                cid = c.get("id")
-                if not cid or cid in exclude:
-                    continue
-                ids.append(cid)
-                if len(ids) >= n:
-                    break
-            if not ids:
-                raise ValueError("empty ids from coingecko")
-            # キャッシュ保存（見える化＆フォールバック用）
-            UNIVERSE_CACHE.write_text(json.dumps({"ts": time.time(), "ids": ids}, ensure_ascii=False), encoding="utf-8")
-            return ids
-        except Exception as e:
-            last_err = e
-            time.sleep(backoff * (k+1))
-    # フォールバック
-    if UNIVERSE_CACHE.exists():
-        cached = json.loads(UNIVERSE_CACHE.read_text(encoding="utf-8"))
-        ids = cached.get("ids") or []
-        if ids:
-            print("[WARN] Using cached universe:", ids)
-            return ids[:n]
-    raise RuntimeError(f"fetch_top_mcap_ids failed: {last_err}")
+COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
+
+DEFAULT_EXCLUDE = {
+    "tether","usd-coin","binance-usd","dai","first-digital-usd",
+    "frax","usdd","terrausd","usde","paypal-usd","euro-coin",
+    "wrapped-bitcoin","staked-ether"
+}
+
+def fetch_top_mcap_ids(n=12, exclude=None):
+    if exclude is None:
+        exclude = set()
+    params = {
+        "vs_currency": "usd",
+        "order": "market_cap_desc",
+        "per_page": 250,
+        "page": 1,
+        "sparkline": "false",
+    }
+    r = requests.get(COINGECKO_URL, params=params, timeout=30)
+    r.raise_for_status()
+    rows = r.json()
+    ids = []
+    for x in rows:
+        cid = x.get("id")
+        if not cid or cid in exclude:
+            continue
+        ids.append(cid)
+        if len(ids) >= n:
+            break
+    return ids
 
 def resolve_universe(cfg):
-    mode = str(cfg.get("universe_mode", "manual")).lower()
+    mode = (cfg.get("universe_mode") or "manual").lower()
+    exclude = set(DEFAULT_EXCLUDE) | set(cfg.get("exclude_ids", []))
+    include = list(cfg.get("include_ids", []))
+
     if mode == "top_mcap":
-        n = int(cfg.get("top_mcap_n", 20))
-        exclude = set(cfg.get("exclude_ids", []))
-        include = list(cfg.get("include_ids", []))
-        ids = fetch_top_mcap_ids(n, exclude)
-        # ensure include
-        for x in include:
-            if x not in ids:
-                ids.append(x)
-        print(f"[INFO] universe_mode=top_mcap  selected={len(ids)}  ids={ids}")
-        return ids
-    # manual
-    ids = list(cfg.get("universe_ids", []))
-    print(f"[INFO] universe_mode=manual  selected={len(ids)}  ids={ids}")
-    return ids
+        n = int(cfg.get("top_mcap_n", 12))
+        ids = fetch_top_mcap_ids(n=n, exclude=exclude)
+        return list(dict.fromkeys(include + ids))  # include を先頭にマージ
+    else:
+        ids = cfg.get("universe_ids")
+        if not isinstance(ids, (list, tuple)) or not ids:
+            raise ValueError("manual モードでは universe_ids を配列で指定してください")
+        ids = list(dict.fromkeys(include + list(ids)))
+        return [c for c in ids if c not in exclude]
+
+
+
 
 CG_MARKETS = "https://api.coingecko.com/api/v3/coins/markets"
 CG_URL = "https://api.coingecko.com/api/v3/coins/markets"
@@ -217,4 +210,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
