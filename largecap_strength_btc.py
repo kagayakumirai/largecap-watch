@@ -190,6 +190,7 @@ def main():
     top = df.head(top_n)
     plt.figure(figsize=(10, 6))
     plt.bar(top["symbol"], top["score"])
+    plt.xticks(rotation=60, ha="right")    # ← シンボルを斜め表示
     plt.title("Large-Cap RS (BTC-quoted)")
     plt.xlabel("Symbol")
     plt.ylabel("Score (z)")
