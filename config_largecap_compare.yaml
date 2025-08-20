@@ -4,19 +4,7 @@
 universe_mode: top_mcap      # ← 追加
 top_mcap_n: 20               # ← ここを20に
 exclude_ids:                 # ← ステーブル等を除外
-  - tether
-  - usd-coin
-  - binance-usd
-  - dai
-  - first-digital-usd
-  - frax
-  - usdd
-  - terrausd
-  - usde
-  - paypal-usd
-  - euro-coin
-  - wrapped-bitcoin
-  - staked-ether
+
 include_ids: []              # 強制的に入れたいIDがあればここに
 # （既存の weights 等はそのままでOK）
 weights_usd:
