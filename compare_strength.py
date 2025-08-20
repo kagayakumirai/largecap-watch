@@ -19,9 +19,6 @@ import math, sys
 COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
 DEFAULT_EXCLUDE = {
-    "tether","usd-coin","binance-usd","dai","first-digital-usd",
-    "frax","usdd","terrausd","usde","paypal-usd","euro-coin",
-    "wrapped-bitcoin","staked-ether"
 }
 
 def fetch_top_mcap_ids(n=12, exclude=None):
@@ -210,6 +207,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
