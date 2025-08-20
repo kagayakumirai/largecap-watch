@@ -12,6 +12,7 @@ jobs:
       contents: write
     env:
       MPLBACKEND: Agg
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,194 +20,77 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
-      
+
       # yq をインストール
       - name: Install yq
         run: |
           curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
+          /usr/local/bin/yq --version
 
-      - name: Load env and inject excludes
+      # .env を以降の全ステップで使えるように登録
+      - name: Export .env to GITHUB_ENV
+        run: |
+          sed -e 's/\r$//' .github/workflows/largecap-watch.env \
+            | grep -v '^\s*#' >> "$GITHUB_ENV"
+          echo "LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-UNSET}"
+
+      # effective 設定を4つ作成（exclude_ids を必ず配列で注入）
+      - name: Build effective configs (force exclude_ids)
         run: |
           set -euo pipefail
-
-          # .env をこのステップに読み込む（パスは実物に合わせて）
-          set -a
-          source .github/workflows/largecap-watch.env
-          set +a
-
-          echo "LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE}"
-
-          # CRLF(Windows改行)が混ざっていても壊れないように正規化
-          sed -i 's/\r$//' .github/workflows/largecap-watch.env || true
-          for f in config_largecap*.yaml; do
-            echo "patching $f"
-            # 既存の exclude_ids を配列として扱い、env 側も空なら [] にフォールバック
+          for base in \
+              config_largecap.yaml \
+              config_largecap_btc.yaml \
+              config_largecap_compare.yaml \
+              config_largecap_compare_scheduler.yaml; do
+            out="${base%.yaml}.effective.yaml"
+            echo "making $out from $base"
             /usr/local/bin/yq '
-              .exclude_ids = (
-                ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // []))
-              ) |
-              .exclude = .exclude_ids
-            ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-
-            echo -n "$f => "; /usr/local/bin/yq '.exclude_ids' "$f"
+              .exclude_ids = (.exclude_ids // [])
+                             + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson)
+              | .exclude    = .exclude_ids
+            ' "$base" > "$out"
+            echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
           done
-      
-      - name: Show current exclude_ids
-        run: |
-          for f in config_largecap*.yaml; do
-            echo "==== $f ===="
-            /usr/local/bin/yq e '.exclude_ids // "MISSING OR NULL"' "$f"
-          done
-
 
       - name: Install deps
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
-      - name: Debug strength config (USD/BTC)
-        run: |
-          echo '--- BEGIN config_largecap.yaml ---'
-          cat config_largecap.yaml || true
-          echo
-          echo '--- BEGIN config_largecap_btc.yaml ---'
-          cat config_largecap_btc.yaml || true
-          echo
-          python - <<'PY'
-          import yaml, pathlib
-          for p in ("config_largecap.yaml","config_largecap_btc.yaml"):
-              try:
-                  cfg=yaml.safe_load(pathlib.Path(p).read_text(encoding="utf-8"))
-              except Exception as e:
-                  print(f"{p} could not read: {e}")
-                  continue
-              ids = cfg.get("universe_ids")
-              print(
-                  f"[{p}] universe_mode={cfg.get('universe_mode')} "
-                  f"top_mcap_n={cfg.get('top_mcap_n')} top_n={cfg.get('top_n')} "
-                  f"ids_type={type(ids).__name__} ids_len={(len(ids) if isinstance(ids,(list,tuple)) else None)}"
-              )
-          PY
-
-      - name: Build effective configs (force exclude_ids)
-        run: |
-          set -euo pipefail
-          # .env はすでに読み込めている前提（LARGECAP_EXCLUDE が見えること）
-          echo "LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE}"
-
-          for base in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml; do
-            out="${base%.yaml}.effective.yaml"
-            echo "making $out from $base"
-            /usr/local/bin/yq '
-              .exclude_ids = (
-                ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // []))
-              ) |
-              .exclude = .exclude_ids
-            ' "$base" > "$out"
-            echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
-          done
 
       - name: Run USD strength (top_n from YAML)
         run: |
-          run: python largecap_strength.py --config config_largecap.effective.yaml
+          python largecap_strength.py --config config_largecap.effective.yaml
           ls -l largecap_strength.*
+
       - name: Pause to avoid 429
         run: sleep 12
-      
+
       - name: Run BTC strength (top_n from YAML)
         run: |
-          run: python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
+          python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
           ls -l largecap_strength_btc.*
-      
+
       # USD/BTC strength の後
-      - name: Pause to avoid 429
+      - name: Pause to avoid 429 (random)
         run: |
-          # 60〜90秒のランダム待機（同時刻集中をズラす）
           python - <<'PY'
           import random, time
           wait = 60 + random.randint(0,30)
           print(f"sleep {wait}s to avoid 429"); time.sleep(wait)
           PY
-      
-      - name: Pause to avoid 429
-        run: sleep 12
-      
-      # --- Compare & send to Discord（※既存のステップ） ---
+
+      # --- Compare & send to Discord ---
       - name: Run compare & send to Discord (with trails)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python run_compare_scheduler.py --config config_largecap_compare_scheduler.effective.yaml --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
+          python run_compare_scheduler.py \
+            --config config_largecap_compare_scheduler.effective.yaml \
+            --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
             --webhook-url "$WEBHOOK" --label "LargeCap Daily (USD×BTC)"
 
-      # 作られた PNG を確認（デバッグ）
+      # 作られた PNG / CSV を確認（デバッグ）
       - name: List generated PNG/CSV
         run: |
-          ls -l *.png *.csv || true
-
-      # ← ここを修正（if をやめて、シェルで空判定）
-      - name: Send quadrant (compare) chart to Discord
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        shell: bash
-        run: |
-          if [ -z "$WEBHOOK" ]; then
-            echo "WEBHOOK is empty; skip Discord upload."
-            exit 0
-          fi
-          png=$(ls -t largecap_usd_vs_btc_*.png 2>/dev/null | head -1 || echo largecap_usd_vs_btc.png)
-          if [ -f "$png" ]; then
-            echo "Uploading $png"
-            curl -sS -X POST \
-              -F 'payload_json={"content":"USD×BTC quadrant (latest)"}' \
-              -F "file1=@${png};type=image/png" \
-              "$WEBHOOK"
-          else
-            echo "Quadrant PNG not found. skip."
-          fi
-
-
-      
-      - name: Send strength charts to Discord (optional)
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          if [ -z "${WEBHOOK}" ]; then
-            echo "WEBHOOK is empty; skip Discord upload."
-            exit 0
-          fi
-          for f in largecap_strength.png largecap_strength_btc.png; do
-            if [ ! -f "$f" ]; then
-              echo "$f not found; skip Discord upload."
-              exit 0
-            fi
-          done
-          curl -sS -X POST \
-            -F 'payload_json={"content":"Strength (USD & BTC) — top_n from YAML"}' \
-            -F "file1=@largecap_strength.png;type=image/png" \
-            -F "file2=@largecap_strength_btc.png;type=image/png" \
-            "$WEBHOOK"
-
-      - name: Save snapshot CSVs to repo
-        run: |
-          mkdir -p data
-          ls -1 largecap_compare_*.csv 2>/dev/null | xargs -I{} cp "{}" data/ || true
-          ls -1 largecap_strength*.csv 2>/dev/null | xargs -I{} cp "{}" data/ || true
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/*.csv || true
-          git commit -m "snapshot: $(date -u +%F_%H%M)" || echo "No changes"
-          git push || true
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: outputs
-          if-no-files-found: ignore
-          retention-days: 14
-          path: |
-            largecap_strength.csv
-            largecap_strength.png
-            largecap_strength_btc.csv
-            largecap_strength_btc.png
-            largecap_compare_*.csv
-            score_trails_*.png
