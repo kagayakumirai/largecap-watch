@@ -216,7 +216,7 @@ def main():
     if len(df) < cmp_topn:
         need = cmp_topn - len(df)
         rest = original_df.drop(df.index).copy()
-        rest["score"] = rest["usd_z"] + rest["btc_z"]
+        rest["score"] = rest["usd_score"] + rest["btc_score"]
         df = pd.concat([df, rest.nlargest(need, "score")], ignore_index=True)
 
     # 散布図描画
@@ -259,6 +259,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
