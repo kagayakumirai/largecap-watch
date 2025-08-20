@@ -211,6 +211,13 @@ def main():
         df = backup_df.copy() if "backup_df" in locals() else original_df.copy()  # 任意
         df["score"] = df["usd_score"] + df["btc_score"]
     df = df.sort_values("score", ascending=False).head(cmp_topn)
+    
+    # フィルタ後 df が少ないときは合計スコアで埋める
+    if len(df) < cmp_topn:
+        need = cmp_topn - len(df)
+        rest = original_df.drop(df.index).copy()
+        rest["score"] = rest["usd_z"] + rest["btc_z"]
+        df = pd.concat([df, rest.nlargest(need, "score")], ignore_index=True)
 
     # 散布図描画
     plt.figure(figsize=(8,6))
@@ -227,6 +234,19 @@ def main():
     plt.close()
     log(f"wrote PNG: {out_png}")
 
+    x0, x1 = ax.get_xlim(); y0, y1 = ax.get_ylim()
+    ax.text(x1*0.98, y1*0.98, "強気/強気", ha="right", va="top", alpha=0.7, fontsize=10)
+    ax.text(x0*0.02, y1*0.98, "弱気/強気", ha="left",  va="top", alpha=0.7, fontsize=10)
+    ax.text(x1*0.98, y0*0.02, "強気/弱気", ha="right", va="bottom", alpha=0.7, fontsize=10)
+    ax.text(x0*0.02, y0*0.02, "弱気/弱気", ha="left",  va="bottom", alpha=0.7, fontsize=10)
+
+    from datetime import datetime, timezone, timedelta
+    jst = timezone(timedelta(hours=9))
+    date = datetime.now(jst).strftime("%Y-%m-%d")  # 例: 2025-08-21
+    ax.set_title(f"USD-score vs BTC-score (Large-Cap) — {date}")
+    # そのまま savefig へ
+
+
     show = df.sort_values(["btc_score","usd_score"], ascending=False)[["symbol","usd_score","btc_score","quadrant"]]
     print(show.to_string(index=False))
     print("[DONE]")
@@ -239,6 +259,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
