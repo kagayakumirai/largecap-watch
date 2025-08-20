@@ -8,6 +8,7 @@ import requests, yaml
 import pandas as pd
 import matplotlib.pyplot as plt
 import json, time, pathlib, requests
+from datetime import datetime, timezone, timedelta
 
 DATA_DIR = pathlib.Path("data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -251,7 +252,7 @@ def main():
     ax.text(x1*0.98, y0*0.02, "強気/弱気", ha="right", va="bottom", alpha=0.7, fontsize=10)
     ax.text(x0*0.02, y0*0.02, "弱気/弱気", ha="left",  va="bottom", alpha=0.7, fontsize=10)
 
-    from datetime import datetime, timezone, timedelta
+
     jst = timezone(timedelta(hours=9))
     date = datetime.now(jst).strftime("%Y-%m-%d")  # 例: 2025-08-21
     ax.set_title(f"USD-score vs BTC-score (Large-Cap) — {date}")
@@ -270,6 +271,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
