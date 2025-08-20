@@ -34,10 +34,10 @@ jobs:
           set +a
 
       # 3つの largecap 用 config に一括注入
-      - name: Inject excludes to all largecap configs
+      - name: Inject excludes to all largecap-watch configs
         run: |
-          for f in configs/config_largecap_*.yaml; do
-            yq -i '.exclude = (env(LARGECAP_EXCLUDE) | fromjson)' "$f"
+          for f in configs/config_largecap-watch_*.yaml; do
+            yq -i '.exclude = (env(LARGECAP-WATCH_EXCLUDE) | fromjson)' "$f"
           done
 
       - name: Install deps
