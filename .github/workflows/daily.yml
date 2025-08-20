@@ -41,16 +41,15 @@ jobs:
           sed -i 's/\r$//' .github/workflows/largecap-watch.env || true
           for f in config_largecap*.yaml; do
             sed -i 's/\r$//' "$f" || true
-          done
-
-          # yq で exclude_ids / exclude を一括注入（式は1行で）
-          for f in config_largecap*.yaml; do
+     
             echo "patching $f"
-          yq -i '.exclude_ids = (env(LARGECAP_EXCLUDE) | fromjson) | .exclude = .exclude_ids' "$f"
-          done
-
-          # 確認
-          for f in config_largecap*.yaml; do
+            # ← ここがポイント：-i をやめて一時ファイル経由で安全に書き換え
+            /usr/local/bin/yq '.
+              | .exclude_ids = (env(LARGECAP_EXCLUDE) | fromjson)
+              | .exclude     = .exclude_ids
+            ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          
+            # 確認
             echo -n "$f => "; yq '.exclude_ids' "$f"
           done
 
