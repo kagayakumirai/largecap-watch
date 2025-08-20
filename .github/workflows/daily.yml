@@ -40,7 +40,7 @@ jobs:
       # 3つの config に一括注入
       - name: Inject excludes to all largecap configs
         run: |
-          for f in configs/config_largecap_*.yaml; do   # ←ファイル名のパターンを実物に合わせて！
+          for f in largecap-watch/config_largecap_*.yaml; do   # ←ファイル名のパターンを実物に合わせて！
             yq -i '.exclude = (env(LARGECAP_EXCLUDE) | fromjson)' "$f"
           done
 
