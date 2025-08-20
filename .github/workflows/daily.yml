@@ -37,57 +37,54 @@ jobs:
 
       - name: Build effective configs (force exclude_ids)
         run: |
-          set -euo pipefail
+        set -euo pipefail
 
-          # シンボル → CoinGecko id の対応表（必要に応じて追加）
-          cat >/tmp/symbol_to_id.yaml <<'YAML'
-          USDE: ethena-usde
-          WETH: weth
-          WEETH:
-            - wrapped-eeth
-            - etherfi-bridged-weeth-avalanche
-            - layerzero-bridged-weeth-swellchain
-            - stargate-bridged-weeth-scroll
-            - etherfi-bridged-weeth-unichain
-          WBETH: wrapped-beacon-eth
-          WSTETH: wrapped-steth
-          USDT: tether
-          USDC: usd-coin
-          BUSD: binance-usd
-          DAI: dai
-          FDUSD: first-digital-usd
-          PYUSD: paypal-usd
-          EURC: euro-coin
-          FRAX: frax
-          USDD: usdd
-          # ← USDS は複数の id をまとめて指定
-          USDS:
-            - sperax-usd        # Sperax USD
-            - usds              # TheStandard USD
-          YAML
+        # シンボル → CoinGecko id の対応表（必要に応じて追加）
+        cat >/tmp/symbol_to_id.yaml <<'YAML'
+        USDE: ethena-usde
+        WETH: weth
+        WEETH: wrapped-eeth        # ← WEETH は wrapped-eeth が正
+        WBETH: wrapped-beacon-eth
+        WSTETH: wrapped-steth
+        USDT: tether
+        USDC: usd-coin
+        BUSD: binance-usd
+        DAI: dai
+        FDUSD: first-digital-usd
+        PYUSD: paypal-usd
+        EURC: euro-coin
+        FRAX: frax
+        USDD: usdd
+        USDS:
+          - sperax-usd            # Sperax USD
+          - usds                  # TheStandard USD
+        YAML
 
-          for base in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml; do
-            [ -f "$base" ] || { echo "skip $base"; continue; }
-            out="${base%.yaml}.effective.yaml"
-            echo "making $out from $base"
+        for base in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml; do
+          [ -f "$base" ] || { echo "skip $base"; continue; }
+          out="${base%.yaml}.effective.yaml"
+          echo "making $out from $base"
 
-            /usr/local/bin/yq '
-              # 1) .env のシンボル（大文字前提）をそのまま記録（将来用）
-              .exclude_symbols = (.exclude_symbols // [])
-                                 + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson) |
-              # 2) シンボルを対応表で id に引き当てる（配列/単一どちらでもOK）→ flatten → unique
-              .exclude_ids = (.exclude_ids // [])
-                             + (
-                                (env(LARGECAP_EXCLUDE) // "[]") | fromjson
-                                 | map( (load("/tmp/symbol_to_id.yaml")[.] // empty) )
-                                 | flatten
-                               )
-                             | unique
-              |
-              .exclude = .exclude_ids
-            ' "$base" > "$out"
-            echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
-          done
+          /usr/local/bin/yq '
+            # 1) .env のシンボル（大文字で書いている前提）を記録
+            .exclude_symbols = (.exclude_symbols // [])
+                               + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson) |
+            # 2) 対応表で symbol→id に変換（配列/単一どちらでもOK）
+            #    見つからないものは "" を入れて後で捨てる
+            .exclude_ids = (.exclude_ids // [])
+                           + (
+                               (env(LARGECAP_EXCLUDE) // "[]") | fromjson
+                               | map( ( . as $s | (load("/tmp/symbol_to_id.yaml")[$s] // "") ) )
+                               | flatten
+                               | map(select(. != ""))
+                               | unique
+                             )
+            |
+            .exclude = .exclude_ids
+          ' "$base" > "$out"
+
+          echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
+        done
 
       - name: Install deps
         run: |
