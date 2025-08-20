@@ -55,6 +55,7 @@ jobs:
           EURC: euro-coin
           FRAX: frax
           USDD: usdd
+          LEO: leoono-by-virtuals
           USDS:
             - sperax-usd            # Sperax USD
             - usds                  # TheStandard USD
