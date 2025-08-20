@@ -136,7 +136,7 @@ jobs:
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python run_compare_scheduler.py --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
+          python run_compare_scheduler.py --config config_largecap_compare_scheduler.effective.yaml --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
             --webhook-url "$WEBHOOK" --label "LargeCap Daily (USD×BTC)"
 
       # 作られた PNG を確認（デバッグ）
