@@ -188,6 +188,31 @@ def main():
     df.sort_values(["btc_score","usd_score"], ascending=False)[out_cols].to_csv(out_csv, index=False)
     log(f"wrote CSV: {out_csv}")
 
+    # ==== compare フィルタ＆スコア（取りこぼし回避版） ====
+    src_topn  = int(cfg.get("compare_source_topn", 30))   # 片側で参照するTopN
+    cmp_topn  = int(cfg.get("compare_top_n", 20))         # 最終表示数
+    guard_min = float(cfg.get("compare_guard_min", 0.0))  # 両軸の最低ライン(z)
+    lam       = float(cfg.get("compare_penalty_lambda", 0.3))  # 不均衡ペナルティ
+
+    # ランク計算
+    df["rank_usd"] = df["usd_z"].rank(ascending=False, method="first")
+    df["rank_btc"] = df["btc_z"].rank(ascending=False, method="first")
+
+    # OR＋ガード（片側TopN以内 かつ 両軸 guard_min 以上）
+    mask_or    = (df["rank_usd"] <= src_topn) | (df["rank_btc"] <= src_topn)
+    mask_guard = (df["usd_z"] >= guard_min) & (df["btc_z"] >= guard_min)
+    df = df.loc[mask_or & mask_guard].copy()
+
+    # スコア = 合計 − λ×不均衡
+    df["score"] = (df["usd_z"] + df["btc_z"]) - lam * (df["usd_z"] - df["btc_z"]).abs()
+
+    # 上位 compare_top_n だけ残す（保険：空なら合計で埋める）
+    if df.empty:
+        df = backup_df.copy() if "backup_df" in locals() else original_df.copy()  # 任意
+        df["score"] = df["usd_z"] + df["btc_z"]
+    df = df.sort_values("score", ascending=False).head(cmp_topn)
+
+    # 散布図描画
     plt.figure(figsize=(8,6))
     plt.scatter(df["usd_score"], df["btc_score"])
     plt.axvline(th_u); plt.axhline(th_b)
@@ -208,6 +233,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
