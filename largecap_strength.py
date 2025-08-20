@@ -122,7 +122,16 @@ def resolve_universe(cfg: dict):
     mode = str(cfg.get("universe_mode", "manual")).lower()
     if mode == "top_mcap":
         n = int(cfg.get("top_mcap_n", 20))
-        exclude = set(DEFAULT_EXCLUDE) | set(cfg.get("exclude_ids", []))
+        def as_list(x):
+            if x is None:
+                return []
+            if isinstance(x, (list, tuple, set)):
+                return list(x)
+            return [x] if isinstance(x, str) else []
+
+        exclude = set(DEFAULT_EXCLUDE)
+        exclude |= set(as_list(cfg.get("exclude_ids")))
+        exclude |= set(as_list(cfg.get("exclude")))  # 予備キーも見る
         include = list(cfg.get("include_ids", []))
 
         ids = fetch_top_mcap_ids(n, exclude)
