@@ -43,7 +43,12 @@ jobs:
           cat >/tmp/symbol_to_id.yaml <<'YAML'
           USDE: ethena-usde
           WETH: weth
-          WEETH: ether-fi-staked-eth
+          WEETH:
+            - wrapped-eeth
+            - etherfi-bridged-weeth-avalanche
+            - layerzero-bridged-weeth-swellchain
+            - stargate-bridged-weeth-scroll
+            - etherfi-bridged-weeth-unichain
           WBETH: wrapped-beacon-eth
           WSTETH: wrapped-steth
           USDT: tether
