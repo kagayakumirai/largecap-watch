@@ -26,24 +26,28 @@ jobs:
           curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
 
-      # ここは A or B のどちらか
-      - name: Load .env
+      # .env を “以降のステップでも” 使えるように登録
+      - name: Load .env into GITHUB_ENV
         shell: bash
         run: |
-          set -a
-          source .github/workflows/largecap-watch.env   # ←Bなら source .env
-          set +a
+          set -euo pipefail
+          test -f .github/workflows/largecap-watch.env
+          # CRLF対策＆コメント除去してそのまま登録
+          sed -e 's/\r$//' .github/workflows/largecap-watch.env \
+            | grep -v '^\s*#' >> "$GITHUB_ENV"
 
-      # 読めているか一応確認（任意）
-      - run: echo "$LARGECAP_EXCLUDE"
+      - name: Debug env
+        run: echo "$LARGECAP_EXCLUDE"
 
-      # 3つの config に一括注入
       - name: Inject excludes to all largecap configs
+        shell: bash
         run: |
-          for f in ./config_largecap_*.yaml; do   # ←ファイル名のパターンを実物に合わせて！
+          set -euo pipefail
+          for f in ./config_largecap*.yaml; do
             echo "patching $f"
             yq -i '.exclude = (env(LARGECAP_EXCLUDE) | fromjson)' "$f"
           done
+
 
       - name: Install deps
         run: |
