@@ -57,6 +57,7 @@ jobs:
           USDD: usdd
           LEO: leo-token
           CBBTC: coinbase-wrapped-btc
+          SUSDE: ethena-staked-usde
           WBT: 
             - wrapped-bitcoin
             - whitebit
