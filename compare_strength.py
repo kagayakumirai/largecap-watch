@@ -191,9 +191,10 @@ def main():
     plt.figure(figsize=(8,6))
     plt.scatter(df["usd_score"], df["btc_score"])
     plt.axvline(th_u); plt.axhline(th_b)
+    label_fs = cfg.get("label_fontsize", 9)
     for _, r in df.iterrows():
         plt.annotate(r["symbol"], (r["usd_score"], r["btc_score"]),
-                     xytext=(4,4), textcoords="offset points")
+                     xytext=(4,4), textcoords="offset points",fontsize=label_fs)
     plt.title("USD-score vs BTC-score (Large-Cap)")
     plt.xlabel("USD composite (z)"); plt.ylabel("BTC-quoted composite (z)")
     plt.tight_layout()
@@ -207,6 +208,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
