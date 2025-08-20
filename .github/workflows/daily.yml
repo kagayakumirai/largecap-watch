@@ -56,7 +56,9 @@ jobs:
           FRAX: frax
           USDD: usdd
           LEO: leo-token
-          WBT: wrapped-bitcoin
+          WBT: 
+            - wrapped-bitcoin
+            - whitebit
           BSC-USD: binance-bridged-usdt-bnb-smart-chain
           USDS:
             - sperax-usd            # Sperax USD
