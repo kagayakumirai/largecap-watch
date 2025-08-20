@@ -194,6 +194,10 @@ def main():
     guard_min = float(cfg.get("compare_guard_min", 0.0))  # 両軸の最低ライン(z)
     lam       = float(cfg.get("compare_penalty_lambda", 0.3))  # 不均衡ペナルティ
 
+    # …usd_z / btc_z を作り終えた直後（フィルタに入る前）に置く
+    sym_col = "symbol" if "symbol" in df.columns else None
+    original_df = df.set_index(sym_col, drop=False).copy() if sym_col else df.copy()
+
     # ランク計算
     df["rank_usd"] = df["usd_score"].rank(ascending=False, method="first")
     df["rank_btc"] = df["btc_score"].rank(ascending=False, method="first")
@@ -212,12 +216,19 @@ def main():
         df["score"] = df["usd_score"] + df["btc_score"]
     df = df.sort_values("score", ascending=False).head(cmp_topn)
     
-    # フィルタ後 df が少ないときは合計スコアで埋める
+    # ⚠ フォールバック（足りないときだけ）
     if len(df) < cmp_topn:
         need = cmp_topn - len(df)
-        rest = original_df.drop(df.index).copy()
-        rest["score"] = rest["usd_score"] + rest["btc_score"]
-        df = pd.concat([df, rest.nlargest(need, "score")], ignore_index=True)
+        if sym_col:
+            # symbol 基準で“残り”を作る
+            rest = original_df.loc[~original_df.index.isin(df[sym_col])].copy()
+        else:
+            # index 基準（保険）
+            rest = original_df.drop(df.index, errors="ignore").copy()
+
+        rest["score"] = rest["usd_score"] + rest["btc_score"]  
+        add = rest.nlargest(need, "score")
+        df = pd.concat([df, add], ignore_index=True)
 
     # 散布図描画
     plt.figure(figsize=(8,6))
@@ -259,6 +270,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
