@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           set -a
-          source .github/largecap-watch.env   # ←Bなら source .env
+          source .github/workflows/largecap-watch.env   # ←Bなら source .env
           set +a
 
       # 読めているか一応確認（任意）
