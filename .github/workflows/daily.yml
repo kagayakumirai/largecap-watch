@@ -51,6 +51,13 @@ jobs:
 
             echo -n "$f => "; /usr/local/bin/yq '.exclude_ids' "$f"
           done
+      
+      - name: Show current exclude_ids
+        run: |
+          for f in config_largecap*.yaml; do
+            echo "==== $f ===="
+            /usr/local/bin/yq e '.exclude_ids // "MISSING OR NULL"' "$f"
+          done
 
 
       - name: Install deps
