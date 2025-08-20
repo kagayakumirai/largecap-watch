@@ -35,17 +35,11 @@ jobs:
             | grep -v '^\s*#' >> "$GITHUB_ENV"
           echo "LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-UNSET}"
 
-      # effective 設定を4つ作成（exclude_ids を必ず配列で注入）
       - name: Build effective configs (force exclude_ids)
         run: |
           set -euo pipefail
-          for base in \
-              config_largecap.yaml \
-              config_largecap_btc.yaml \
-              config_largecap_compare.yaml \
-              config_largecap_compare_scheduler.yaml; do
+          for base in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml; do
             out="${base%.yaml}.effective.yaml"
-            echo "making $out from $base"
             /usr/local/bin/yq '
               .exclude_ids = (.exclude_ids // [])
                              + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson)
@@ -53,6 +47,7 @@ jobs:
             ' "$base" > "$out"
             echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
           done
+
 
       - name: Install deps
         run: |
@@ -81,16 +76,76 @@ jobs:
           print(f"sleep {wait}s to avoid 429"); time.sleep(wait)
           PY
 
-      # --- Compare & send to Discord ---
-      - name: Run compare & send to Discord (with trails)
+      - name: Run compare & send to Discord (simple, once a day)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python run_compare_scheduler.py \
-            --config config_largecap_compare_scheduler.effective.yaml \
-            --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
-            --webhook-url "$WEBHOOK" --label "LargeCap Daily (USD×BTC)"
+          LABEL="LargeCap Daily (USD×BTC) — $(TZ=Asia/Tokyo date +'%Y-%m-%d')"
+          python compare_strength.py \
+            --config config_largecap_compare.effective.yaml \
+            --trails --hours 168 --topn 20 --smooth 5 \
+            --webhook-url "$WEBHOOK" --label "$LABEL"
+
 
       # 作られた PNG / CSV を確認（デバッグ）
       - name: List generated PNG/CSV
         run: |
+          ls -l *.png *.csv || true
+
+      - name: Send quadrant (compare) chart to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "WEBHOOK is empty; skip Discord upload."; exit 0
+          fi
+          png=$(ls -t largecap_usd_vs_btc_*.png 2>/dev/null | head -1 || echo largecap_usd_vs_btc.png)
+          if [ -f "$png" ]; then
+            echo "Uploading $png"
+            curl -sS -X POST \
+              -F 'payload_json={"content":"USD×BTC quadrant (latest)"}' \
+              -F "file1=@${png};type=image/png" \
+              "$WEBHOOK"
+          else
+            echo "Quadrant PNG not found. skip."
+          fi
+
+      - name: Send strength charts to Discord (optional)
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "${WEBHOOK}" ]; then
+            echo "WEBHOOK is empty; skip Discord upload."; exit 0
+          fi
+          for f in largecap_strength.png largecap_strength_btc.png; do
+            [ -f "$f" ] || { echo "$f not found; skip."; exit 0; }
+          done
+          curl -sS -X POST \
+            -F 'payload_json={"content":"Strength (USD & BTC) — top_n from YAML"}' \
+            -F "file1=@largecap_strength.png;type=image/png" \
+            -F "file2=@largecap_strength_btc.png;type=image/png" \
+            "$WEBHOOK"
+
+      - name: Save snapshot CSVs to repo
+        run: |
+          mkdir -p data
+          ls -1 largecap_compare_*.csv 2>/dev/null | xargs -I{} cp "{}" data/ || true
+          ls -1 largecap_strength*.csv 2>/dev/null | xargs -I{} cp "{}" data/ || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/*.csv || true
+          git commit -m "snapshot: $(date -u +%F_%H%M)" || echo "No changes"
+          git push || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: outputs
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            largecap_strength.csv
+            largecap_strength.png
+            largecap_strength_btc.csv
+            largecap_strength_btc.png
+            largecap_compare_*.csv
+            score_trails_*.png
