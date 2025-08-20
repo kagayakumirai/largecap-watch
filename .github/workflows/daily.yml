@@ -40,18 +40,18 @@ jobs:
           # CRLF(Windows改行)が混ざっていても壊れないように正規化
           sed -i 's/\r$//' .github/workflows/largecap-watch.env || true
           for f in config_largecap*.yaml; do
-            sed -i 's/\r$//' "$f" || true
-     
             echo "patching $f"
-            # ← ここがポイント：-i をやめて一時ファイル経由で安全に書き換え
-            /usr/local/bin/yq '.
-              | .exclude_ids = (env(LARGECAP_EXCLUDE) | fromjson)
-              | .exclude     = .exclude_ids
+            # 既存の exclude_ids を配列として扱い、env 側も空なら [] にフォールバック
+            /usr/local/bin/yq '
+              .exclude_ids = (
+                ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // []))
+              ) |
+              .exclude = .exclude_ids
             ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-          
-            # 確認
-            echo -n "$f => "; yq '.exclude_ids' "$f"
+
+            echo -n "$f => "; /usr/local/bin/yq '.exclude_ids' "$f"
           done
+
 
       - name: Install deps
         run: |
