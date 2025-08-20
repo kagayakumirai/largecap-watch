@@ -56,6 +56,7 @@ jobs:
           FRAX: frax
           USDD: usdd
           LEO: leo-token
+          CBBTC: coinbase-wrapped-btc
           WBT: 
             - wrapped-bitcoin
             - whitebit
