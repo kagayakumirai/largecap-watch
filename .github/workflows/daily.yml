@@ -128,6 +128,28 @@ jobs:
           python compare_strength.py \
             --config config_largecap_compare.effective.yaml
 
+      # テスト用に追加
+      - name: Send compare (USD×BTC) chart to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          # Webhook 未設定ならスキップ
+          [ -n "$WEBHOOK" ] || { echo "WEBHOOK empty; skip"; exit 0; }
+
+          # 生成された比較PNGを検出（日時付きにも対応）
+          png=$(ls -t largecap_usd_vs_btc_*.png largecap_usd_vs_btc.png 2>/dev/null | head -1 || true)
+          if [ -z "$png" ]; then
+            echo "Compare PNG not found; skip"
+            exit 0
+          fi
+  
+          echo "Uploading $png"
+          curl -sS -X POST \
+            -F 'payload_json={"content":"Compare: USD × BTC (latest)"}' \
+            -F "file1=@${png};type=image/png" \
+            "$WEBHOOK"
+      
+
 
       # 作られた PNG / CSV を確認（デバッグ）
       - name: List generated PNG/CSV
