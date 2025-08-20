@@ -108,14 +108,14 @@ jobs:
 
       - name: Run USD strength (top_n from YAML)
         run: |
-          python largecap_strength.py --config config_largecap.yaml
+          run: python largecap_strength.py --config config_largecap.effective.yaml
           ls -l largecap_strength.*
       - name: Pause to avoid 429
         run: sleep 12
       
       - name: Run BTC strength (top_n from YAML)
         run: |
-          python largecap_strength_btc.py --config config_largecap_btc.yaml
+          run: python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
           ls -l largecap_strength_btc.*
       
       # USD/BTC strength の後
