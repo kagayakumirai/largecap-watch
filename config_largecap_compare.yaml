@@ -7,7 +7,7 @@ exclude_ids:                 # ← ステーブル等を除外
 compare_select: or              # 説明用のフラグ（使ってなくてもOK）
 compare_source_topn: 30         # 片側の参照TopN
 compare_top_n: 20               # 最終表示数
-compare_guard_min: -0.2          # 両軸の最低z（例: 0 or -0.2）
+compare_guard_min: -0.3          # 両軸の最低z（例: 0 or -0.2）
 compare_penalty_lambda: 0.3     # 不均衡ペナルティ 0〜0.6目安
 
 include_ids: []              # 強制的に入れたいIDがあればここに
