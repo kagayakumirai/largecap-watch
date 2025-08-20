@@ -242,12 +242,21 @@ def main():
     plt.title("USD-score vs BTC-score (Large-Cap)")
     plt.xlabel("USD composite (z)"); plt.ylabel("BTC-quoted composite (z)")
     plt.tight_layout()
+
+    jst = timezone(timedelta(hours=9))
+    stamp = datetime.now(jst).strftime("%Y-%m-%d %H:%M")
+    # タイトルに日時
+    ax.set_title(f"USD-score vs BTC-score (Large-Cap) — {stamp} JST")
+
+    x0, x1 = ax.get_xlim(); y0, y1 = ax.get_ylim()
+    ax.text(x1*0.98, y1*0.98, "強気/強気", ha="right", va="top", alpha=0.7, fontsize=10)
+    ax.text(x0*0.02, y1*0.98, "弱気/強気", ha="left",  va="top", alpha=0.7, fontsize=10)
+    ax.text(x1*0.98, y0*0.02, "強気/弱気", ha="right", va="bottom", alpha=0.7, fontsize=10)
+    ax.text(x0*0.02, y0*0.02, "弱気/弱気", ha="left",  va="bottom", alpha=0.7, fontsize=10)
+    
     plt.savefig(out_png, dpi=150)
     plt.close()
     log(f"wrote PNG: {out_png}")
-
-
-
 
     show = df.sort_values(["btc_score","usd_score"], ascending=False)[["symbol","usd_score","btc_score","quadrant"]]
     print(show.to_string(index=False))
@@ -261,6 +270,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
