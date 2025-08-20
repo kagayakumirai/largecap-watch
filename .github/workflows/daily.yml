@@ -27,25 +27,33 @@ jobs:
           chmod +x /usr/local/bin/yq
 
       - name: Load env and inject excludes
-        shell: bash
-        run: |
-          set -euo pipefail
+　　　　　　  shell: bash
+ 　　　　　　 run: |
+    　　　　　　set -euo pipefail
 
-          # env をこのステップ内に読み込み
-          set -a
-          source .github/workflows/largecap-watch.env
-          set +a
-          echo "LARGECAP_EXCLUDE=$LARGECAP_EXCLUDE"
+    　　　　　　# 1) .env をこのステップに読み込む
+    　　　　　　set -a
+   　　　　　　 source .github/workflows/largecap-watch.env
+   　　　　　　 set +a
+    　　　　　　echo "LARGECAP_EXCLUDE=$LARGECAP_EXCLUDE"
 
-          # 3つのconfigを全部対象にする（下線なしも拾う）
-          for f in ./config_largecap*.yaml; do
-            echo "patching $f"
-            yq -i '
-              .exclude_ids = (env(LARGECAP_EXCLUDE) | fromjson) |
-              .exclude      = .exclude_ids
-            ' "$f"
-            echo -n "=> exclude_ids now: "; yq '.exclude_ids' "$f"
-          done
+   　　　　　　 # 2) 改行を LF に正規化（Windowsで編集した場合のEOF対策）
+   　　　　　　 sed -i 's/\r$//' .github/workflows/largecap-watch.env || true
+    　　　　　　for f in config_largecap*.yaml; do
+      　　　　　　sed -i 's/\r$//' "$f" || true
+    　　　　　　done
+
+   　　　　　　 # 3) yq で一括注入（式は一行で渡す）
+    　　　　　　for f in config_largecap*.yaml; do
+     　　　　　　 echo "patching $f"
+      　　　　　　yq -i '.exclude_ids = (env(LARGECAP_EXCLUDE) | fromjson) | .exclude = .exclude_ids' "$f"
+    　　　　　　done
+
+   　　　　　　 # 4) 確認（任意）
+    　　　　　　for f in config_largecap*.yaml; do
+     　　　　　　 echo -n "$f => "; yq '.exclude_ids' "$f"
+    　　　　　　done
+
 
 
 
