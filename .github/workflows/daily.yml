@@ -19,6 +19,26 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+      
+      # yq をインストール
+      - name: Install yq
+        run: |
+          curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+
+      # .env をロードして環境変数に反映
+      - name: Load .env
+        run: |
+          set -a
+          source .github/largecap.env
+          set +a
+
+      # 3つの largecap 用 config に一括注入
+      - name: Inject excludes to all largecap configs
+        run: |
+          for f in configs/config_largecap_*.yaml; do
+            yq -i '.exclude = (env(LARGECAP_EXCLUDE) | fromjson)' "$f"
+          done
 
       - name: Install deps
         run: |
