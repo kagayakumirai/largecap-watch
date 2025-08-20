@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # シンボル→CoinGecko id の対応表（必要に応じて追加）
+          # シンボル → CoinGecko id の対応表（必要に応じて追加）
           cat >/tmp/symbol_to_id.yaml <<'YAML'
           USDE: ethena-usde
           WETH: weth
@@ -63,14 +63,14 @@ jobs:
             out="${base%.yaml}.effective.yaml"
             echo "making $out from $base"
 
-            # 1) envの配列を大文字化したシンボルとして保持
-            # 2) 対応表でidに引き当て、空は捨てる
             /usr/local/bin/yq '
+              # 1) .env の配列をそのまま exclude_symbols に（.env は大文字で記載前提）
               .exclude_symbols = (.exclude_symbols // [])
-                                   + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson | map(ascii_upcase)) |
+                                 + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson) |
+              # 2) 対応表で symbol → id に引き当て、空は捨てる
               .exclude_ids = (.exclude_ids // [])
                              + (
-                                 (env(LARGECAP_EXCLUDE) // "[]") | fromjson | map(ascii_upcase)
+                                 (env(LARGECAP_EXCLUDE) // "[]") | fromjson
                                  | map( ( . as $s | (load("/tmp/symbol_to_id.yaml")[$s] // "") ) )
                                  | map(select(. != ""))
                                ) |
@@ -79,6 +79,7 @@ jobs:
 
             echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
           done
+
 
       - name: Install deps
         run: |
