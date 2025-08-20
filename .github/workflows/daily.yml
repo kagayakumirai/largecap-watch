@@ -30,7 +30,7 @@ jobs:
       - name: Load .env
         run: |
           set -a
-          source .github/largecap.env
+          source .github/largecap-watch.env
           set +a
 
       # 3つの largecap 用 config に一括注入
