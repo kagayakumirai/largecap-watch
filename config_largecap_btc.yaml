@@ -22,4 +22,8 @@ exclude_ids:
   - paypal-usd        # USD系の新顔
   - euro-coin         # EURステーブル
   - ethena-usde
+  - usde
+  - weeth
+  - weth
+  - wbeth   
 include_ids: []       # どうしても入れたい id があればここに
