@@ -18,12 +18,5 @@ out_png: largecap_strength_btc.png
 universe_mode: top_mcap     # manual / top_mcap
 top_mcap_n: 21
 # ここは USD だけの追加除外・追加採用（任意）
-exclude_ids:
-  - paypal-usd        # USD系の新顔
-  - euro-coin         # EURステーブル
-  - ethena-usde
-  - usde
-  - weeth
-  - weth
-  - wbeth   
+exclude_ids: 
 include_ids: []       # どうしても入れたい id があればここに
