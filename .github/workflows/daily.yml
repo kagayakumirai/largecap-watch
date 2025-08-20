@@ -26,17 +26,21 @@ jobs:
           curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
 
-      # .env をロードして環境変数に反映
+      # ここは A or B のどちらか
       - name: Load .env
+        shell: bash
         run: |
           set -a
-          source .github/largecap-watch.env
+          source .github/largecap-watch.env   # ←Bなら source .env
           set +a
 
-      # 3つの largecap 用 config に一括注入
+      # 読めているか一応確認（任意）
+      - run: echo "$LARGECAP_EXCLUDE"
+
+      # 3つの config に一括注入
       - name: Inject excludes to all largecap configs
         run: |
-          for f in configs/config_largecap-watch_*.yaml; do
+          for f in configs/config_largecap_*.yaml; do   # ←ファイル名のパターンを実物に合わせて！
             yq -i '.exclude = (env(LARGECAP_EXCLUDE) | fromjson)' "$f"
           done
 
