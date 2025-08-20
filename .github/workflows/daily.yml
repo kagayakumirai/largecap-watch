@@ -82,9 +82,7 @@ jobs:
         run: |
           LABEL="LargeCap Daily (USD×BTC) — $(TZ=Asia/Tokyo date +'%Y-%m-%d')"
           python compare_strength.py \
-            --config config_largecap_compare.effective.yaml \
-            --trails --hours 168 --topn 20 --smooth 5 \
-            --webhook-url "$WEBHOOK" --label "$LABEL"
+            --config config_largecap_compare.effective.yaml
 
 
       # 作られた PNG / CSV を確認（デバッグ）
