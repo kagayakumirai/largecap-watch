@@ -195,21 +195,21 @@ def main():
     lam       = float(cfg.get("compare_penalty_lambda", 0.3))  # 不均衡ペナルティ
 
     # ランク計算
-    df["rank_usd"] = df["usd_z"].rank(ascending=False, method="first")
-    df["rank_btc"] = df["btc_z"].rank(ascending=False, method="first")
+    df["rank_usd"] = df["usd_score"].rank(ascending=False, method="first")
+    df["rank_btc"] = df["btc_score"].rank(ascending=False, method="first")
 
     # OR＋ガード（片側TopN以内 かつ 両軸 guard_min 以上）
     mask_or    = (df["rank_usd"] <= src_topn) | (df["rank_btc"] <= src_topn)
-    mask_guard = (df["usd_z"] >= guard_min) & (df["btc_z"] >= guard_min)
+    mask_guard = (df["usd_score"] >= guard_min) & (df["btc_score"] >= guard_min)
     df = df.loc[mask_or & mask_guard].copy()
 
     # スコア = 合計 − λ×不均衡
-    df["score"] = (df["usd_z"] + df["btc_z"]) - lam * (df["usd_z"] - df["btc_z"]).abs()
+    df["score"] = (df["usd_score"] + df["btc_score"]) - lam * (df["usd_score"] - df["btc_score"]).abs()
 
     # 上位 compare_top_n だけ残す（保険：空なら合計で埋める）
     if df.empty:
         df = backup_df.copy() if "backup_df" in locals() else original_df.copy()  # 任意
-        df["score"] = df["usd_z"] + df["btc_z"]
+        df["score"] = df["usd_score"] + df["btc_score"]
     df = df.sort_values("score", ascending=False).head(cmp_topn)
 
     # 散布図描画
@@ -233,6 +233,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
