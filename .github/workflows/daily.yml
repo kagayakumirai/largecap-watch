@@ -86,8 +86,8 @@ jobs:
               |
               .exclude = .exclude_ids
             ' "$base" > "$out"
-                USDS: sperax-usd
-                YAML
+            echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
+          done
 
       - name: Install deps
         run: |
