@@ -231,8 +231,15 @@ def main():
     print(show.to_string(index=False))
     print("[DONE]")
 
+print("before filter:", len(df))
+print("OR kept:", ((df["rank_usd"]<=src_topn)|(df["rank_btc"]<=src_topn)).sum())
+if guard_min is not None:
+    print(f"guard_min={guard_min} kept:",
+          ((df["usd_score"]>=guard_min)&(df["btc_score"]>=guard_min)).sum())
+
 if __name__ == "__main__":
     main()
+
 
 
 
