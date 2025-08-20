@@ -38,16 +38,47 @@ jobs:
       - name: Build effective configs (force exclude_ids)
         run: |
           set -euo pipefail
+
+          # シンボル→CoinGecko id の対応表（必要に応じて追加）
+          cat >/tmp/symbol_to_id.yaml <<'YAML'
+          USDE: ethena-usde
+          WETH: weth
+          WEETH: ether-fi-staked-eth
+          WBETH: wrapped-beacon-eth
+          WSTETH: wrapped-steth
+          USDT: tether
+          USDC: usd-coin
+          BUSD: binance-usd
+          DAI: dai
+          FDUSD: first-digital-usd
+          PYUSD: paypal-usd
+          EURC: euro-coin
+          FRAX: frax
+          USDD: usdd
+          USDS: sperax-usd
+          YAML
+
           for base in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml; do
+            [ -f "$base" ] || { echo "skip $base"; continue; }
             out="${base%.yaml}.effective.yaml"
+            echo "making $out from $base"
+
+            # 1) envの配列を大文字化したシンボルとして保持
+            # 2) 対応表でidに引き当て、空は捨てる
             /usr/local/bin/yq '
+              .exclude_symbols = (.exclude_symbols // [])
+                                   + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson | map(ascii_upcase)) |
               .exclude_ids = (.exclude_ids // [])
-                             + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson)
-              | .exclude    = .exclude_ids
+                             + (
+                                 (env(LARGECAP_EXCLUDE) // "[]") | fromjson | map(ascii_upcase)
+                                 | map( ( . as $s | (load("/tmp/symbol_to_id.yaml")[$s] // "") ) )
+                                 | map(select(. != ""))
+                               ) |
+              .exclude = .exclude_ids
             ' "$base" > "$out"
+
             echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
           done
-
 
       - name: Install deps
         run: |
