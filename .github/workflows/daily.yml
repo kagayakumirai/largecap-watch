@@ -88,6 +88,24 @@ jobs:
               )
           PY
 
+      - name: Build effective configs (force exclude_ids)
+        run: |
+          set -euo pipefail
+          # .env はすでに読み込めている前提（LARGECAP_EXCLUDE が見えること）
+          echo "LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE}"
+
+          for base in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml; do
+            out="${base%.yaml}.effective.yaml"
+            echo "making $out from $base"
+            /usr/local/bin/yq '
+              .exclude_ids = (
+                ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // []))
+              ) |
+              .exclude = .exclude_ids
+            ' "$base" > "$out"
+            echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
+          done
+
       - name: Run USD strength (top_n from YAML)
         run: |
           python largecap_strength.py --config config_largecap.yaml
