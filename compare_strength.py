@@ -251,11 +251,11 @@ def main():
     ax.set_title(f"USD-score vs BTC-score (Large-Cap) — {stamp} JST")
     
     x0, x1 = ax.get_xlim(); y0, y1 = ax.get_ylim()
-    ax.text(x1*0.98, y1*0.98, "強気/強気", ha="right", va="top", alpha=0.7, fontsize=10)
-    ax.text(x0*0.02, y1*0.98, "弱気/強気", ha="left",  va="top", alpha=0.7, fontsize=10)
-    ax.text(x1*0.98, y0*0.02, "強気/弱気", ha="right", va="bottom", alpha=0.7, fontsize=10)
-    ax.text(x0*0.02, y0*0.02, "弱気/弱気", ha="left",  va="bottom", alpha=0.7, fontsize=10)
-    
+    ax.text(x1*0.98, y1*0.98, "Bull / Bull", ha="right", va="top", fontsize=10, alpha=0.7)
+    ax.text(x0*0.02, y1*0.98, "Bear / Bull", ha="left",  va="top", fontsize=10, alpha=0.7)
+    ax.text(x1*0.98, y0*0.02, "Bull / Bear", ha="right", va="bottom", fontsize=10, alpha=0.7)
+    ax.text(x0*0.02, y0*0.02, "Bear / Bear", ha="left",  va="bottom", fontsize=10, alpha=0.7)
+
     plt.savefig(out_png, dpi=150)
     plt.close()
     log(f"wrote PNG: {out_png}")
@@ -272,6 +272,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
