@@ -27,22 +27,29 @@ jobs:
           chmod +x /usr/local/bin/yq
 
       - name: Load env & inject excludes
-        shell: bash
-        run: |
-          set -euo pipefail
-          set -a
-          source .github/workflows/largecap-watch.env   # ← 既存の .env
-          set +a
-          for f in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml; do
-            /usr/local/bin/yq '
-              .exclude_ids = ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // [])) |
-              .exclude     = .exclude_ids
-            ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-          done
-          # effective を作成（中身は同じでも毎回明示的に生成）
-          for base in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml; do
-            /usr/local/bin/yq '.' "$base" > "${base%.yaml}.effective.yaml"
-          done
+      shell: bash
+      run: |
+        set -euo pipefail
+        set -a
+        source .github/workflows/largecap-watch.env
+        set +a
+
+        FILES="config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml"
+
+        # exclude_ids をあるファイルにだけ注入
+        for f in $FILES; do
+          [ -f "$f" ] || continue
+          /usr/local/bin/yq '
+            .exclude_ids = ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // [])) |
+            .exclude     = .exclude_ids
+          ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+        done
+
+        # effective をあるファイルだけ生成
+        for base in $FILES; do
+          [ -f "$base" ] || continue
+          /usr/local/bin/yq '.' "$base" > "${base%.yaml}.effective.yaml"
+        done
 
       - name: Install deps
         run: |
