@@ -10,7 +10,11 @@ import argparse, subprocess, time, datetime as dt, sys, shutil
 from pathlib import Path
 import yaml, requests, pandas as pd
 import json
+from zoneinfo import ZoneInfo  # py>=3.9
+JST = ZoneInfo("Asia/Tokyo")
 
+def now_hm():    return dt.datetime.now(JST).strftime("%Y%m%d_%H%M")            # ← JST
+def now_human(): return dt.datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
 # ==== 先頭付近：import に追加 ====
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
