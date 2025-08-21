@@ -11,6 +11,55 @@ from pathlib import Path
 import yaml, requests, pandas as pd
 import json
 
+# ==== 先頭付近：import に追加 ====
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+import pandas as pd
+
+# ==== ユーティリティ ====
+TRAILS_DIR = Path("data")
+TRAILS_DIR.mkdir(exist_ok=True)
+
+def _now_utc_iso():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168):
+    """
+    side: 'usd' or 'btc'
+    df_now: columns=['symbol','score'] を想定（その時点のスコア）
+    """
+    ts = _now_utc_iso()
+    cur = df_now[["symbol", "score"]].copy()
+    cur.insert(0, "ts", ts)
+    cur.insert(1, "side", side)
+
+    out = TRAILS_DIR / f"score_trails_{side}.csv"
+    header = not out.exists()
+    cur.to_csv(out, index=False, mode="a", header=header)
+
+    # 古い行を掃除（hours_keepより古いものを落とす）
+    try:
+        hist = pd.read_csv(out, parse_dates=["ts"])
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_keep+6)  # 余裕6h
+        hist = hist[hist["ts"] >= cutoff]
+        hist.sort_values(["ts", "symbol"], inplace=True)
+        hist.drop_duplicates(["ts", "symbol"], keep="last", inplace=True)
+        hist.to_csv(out, index=False)
+    except Exception:
+        pass
+    return out
+
+def load_trails(side: str):
+    out = TRAILS_DIR / f"score_trails_{side}.csv"
+    if not out.exists():
+        return None
+    df = pd.read_csv(out, parse_dates=["ts"])
+    df.sort_values(["ts", "symbol"], inplace=True)
+    return df
+
+
+
+
 # ---------- helpers ----------
 def now_hm(): return dt.datetime.now().strftime("%Y%m%d_%H%M")
 def now_human(): return dt.datetime.now().strftime("%Y-%m-%d %H:%M")
