@@ -17,6 +17,58 @@ import requests, yaml, pandas as pd, matplotlib.pyplot as plt
 from pathlib import Path
 import math, sys
 
+# --- 先頭の import 付近に追加 ---
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+import pandas as pd
+
+TRAILS_DIR = Path("data"); TRAILS_DIR.mkdir(exist_ok=True)
+
+def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168):
+    """df_now: columns=['symbol','score']"""
+    ts = datetime.now(timezone.utc)
+    cur = df_now.copy()
+    cur.insert(0, "ts", ts)
+    cur.insert(1, "side", side)
+    out = TRAILS_DIR / f"score_trails_{side}.csv"
+    header = not out.exists()
+    cur.to_csv(out, index=False, mode="a", header=header)
+
+    # 古い行を掃除
+    hist = pd.read_csv(out, parse_dates=["ts"])
+    cutoff = ts - timedelta(hours=hours_keep + 6)
+    hist = hist[hist["ts"] >= cutoff]
+    hist.sort_values(["ts", "symbol"], inplace=True)
+    hist.drop_duplicates(["ts","symbol"], keep="last", inplace=True)
+    hist.to_csv(out, index=False)
+    return out
+
+def load_trails(side: str):
+    p = TRAILS_DIR / f"score_trails_{side}.csv"
+    return None if not p.exists() else pd.read_csv(p, parse_dates=["ts"]).sort_values(["ts","symbol"])
+
+def plot_trails(side: str, topn: int = 20, fname: str = None):
+    hist = load_trails(side)
+    if hist is None or hist.empty: 
+        print(f"[TRAILS] no data for {side}"); return None
+    last_ts = hist["ts"].max()
+    latest = hist[hist["ts"] == last_ts].sort_values("score", ascending=False)
+    keep = latest["symbol"].head(topn).tolist()
+    dfp = (hist[hist["symbol"].isin(keep)]
+           .pivot(index="ts", columns="symbol", values="score")
+           .sort_index())
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(12,5))
+    dfp.plot(ax=ax, legend=True)
+    ax.axhline(0, linewidth=1)
+    ax.set_title(f"{side.upper()}-score Trails (last 168h, top {topn})")
+    ax.set_ylabel("Score (z)"); ax.set_xlabel("Time")
+    fig.tight_layout()
+    fname = fname or f"score_trails_{side}.png"
+    fig.savefig(fname, dpi=150); plt.close(fig)
+    print(f"[TRAILS] wrote {fname}"); return fname
+
+
 COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
 DEFAULT_EXCLUDE = {
@@ -180,6 +232,18 @@ def main():
         return "D 弱×弱（様子見）"
     df["quadrant"] = [label(u,b) for u,b in zip(df["usd_score"], df["btc_score"])]
 
+    # 例: df は ['symbol','usd_z','btc_z', ...] を含む
+    latest_usd = df[["symbol","usd_score"]].rename(columns={"usd_score":"score"})
+    latest_btc = df[["symbol","btc_score"]].rename(columns={"btc_score":"score"})
+    persist_trails("usd", latest_usd)
+    persist_trails("btc", latest_btc)
+
+    # 折れ線PNG作成
+    plot_trails("usd", topn=20, fname="score_trails_usd.png")
+    plot_trails("btc", topn=20, fname="score_trails_btc.png")
+
+
+    
     out_csv = out_dir / cfg.get("out_csv", "largecap_compare.csv")
     out_png = out_dir / cfg.get("out_png_scatter", "largecap_usd_vs_btc.png")
 
@@ -272,6 +336,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
