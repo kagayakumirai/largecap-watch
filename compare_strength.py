@@ -38,21 +38,9 @@ out.parent.mkdir(exist_ok=True, parents=True)
 header = not out.exists()
 cur.to_csv(out, index=False, mode="a", header=header)
 
-# 既存行も含めてJSTに正規化 & 掃除（任意）
-try:
-    hist = pd.read_csv(out)
-    hist["ts"] = pd.to_datetime(hist["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
-    cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=168 + 6)
-    hist = hist[hist["ts"] >= cutoff]
-    hist.sort_values(["ts", "symbol"], inplace=True)
-    hist.drop_duplicates(["ts", "symbol"], keep="last", inplace=True)
-    hist.to_csv(out, index=False)
-except Exception:
-    pass
-
 def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168):
     """df_now: columns=['symbol','score']"""
-    ts = datetime.now(timezone.utc)
+    ts = datetime.now(timezone.jst)
     cur = df_now.copy()
     cur.insert(0, "ts", ts)
     cur.insert(1, "side", side)
@@ -437,6 +425,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
