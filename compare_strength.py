@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # USD建て × BTC建て 強弱を比較（ログ多め＆保存先固定）
 
-import argparse, math
+import argparse, math, sys
 from pathlib import Path
 import requests, yaml
 import pandas as pd
@@ -13,18 +13,18 @@ from datetime import datetime, timezone, timedelta
 import numpy as np
 from zoneinfo import ZoneInfo
 import datetime as dt
+
 JST = ZoneInfo("Asia/Tokyo")
+TRAILS_DIR = Path("data")
+TRAILS_DIR.mkdir(parents=True, exist_ok=True)
 
 def _now_jst_iso() -> str:
-    # 例: 2025-08-22T09:15:00+09:00
     return dt.datetime.now(JST).isoformat(timespec="seconds")
 
 DATA_DIR = pathlib.Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 UNIVERSE_CACHE = DATA_DIR / "universe_cache.json"
-import requests, yaml, pandas as pd, matplotlib.pyplot as plt
-from pathlib import Path
-import math, sys
+
 
 def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Path:
     """
@@ -424,6 +424,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
