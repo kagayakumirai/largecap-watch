@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import json, time, pathlib, requests
 from datetime import datetime, timezone, timedelta
+import numpy as np
 
 DATA_DIR = pathlib.Path("data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -46,51 +47,64 @@ def load_trails(side: str):
 def plot_trails(side: str, topn: int = 20, fname: str = None):
     hist = load_trails(side)
     if hist is None or hist.empty:
-        print(f"[TRAILS] no data for {side}")
-        return None
+        print(f"[TRAILS] no data for {side}"); return None
 
-    # 最新時点の上位 topn を採用
+    # 最新時点の上位 topn を対象（これまで通り）
     last_ts = hist["ts"].max()
     latest  = hist[hist["ts"] == last_ts].sort_values("score", ascending=False)
     keep    = latest["symbol"].head(topn).tolist()
 
-    # ピボット（時系列×銘柄）
     dfp = (hist[hist["symbol"].isin(keep)]
            .pivot(index="ts", columns="symbol", values="score")
            .sort_index())
 
-    # （任意）ほんの少し平滑化（点が少ないときのギザギザ抑制）
-    # dfp = dfp.rolling(2, min_periods=1).mean()
-
     fig, ax = plt.subplots(figsize=(12, 5))
-    dfp.plot(ax=ax, legend=False)   # まず凡例は消す（あとで右端ラベルに）
+    dfp.plot(ax=ax, legend=False, linewidth=1.6)
 
-    # y=0 の基準線
-    ax.axhline(0, color="0.3", linewidth=1)
+    # y=0 基準線
+    ax.axhline(0, color="0.4", linewidth=1)
 
-    # 右端に各シリーズ名を注釈（凡例で中央が隠れないように）
+    # 右端ラベルは「直近の変化が大きい」順に厳選
+    if dfp.shape[0] >= 2:
+        delta = (dfp.iloc[-1] - dfp.iloc[-2]).abs()
+        movers = set(delta.nlargest(min(8, len(delta))).index)     # 動いた上位
+    else:
+        movers = set()
+
+    top_now = set(dfp.iloc[-1].nlargest(min(8, dfp.shape[1])).index)  # 現在値の上位
+    label_cols = list(top_now | movers)   # 両者の和集合だけラベル
+
+    # 右端に銘柄＋矢印（↑↓→）＋Δz を表示
     for col in dfp.columns:
-        y = dfp[col].iloc[-1]
-        ax.text(dfp.index[-1], y, f"  {col}", va="center", fontsize=9)
+        y_last = float(dfp[col].iloc[-1])
+        if dfp.shape[0] >= 2:
+            dz = y_last - float(dfp[col].iloc[-2])
+        else:
+            dz = 0.0
+        arrow = "↑" if dz > 0.001 else ("↓" if dz < -0.001 else "→")
+        text = f"  {col}" + (f" {arrow}{dz:+.2f}" if col in label_cols else "")
 
-    # タイトルに日時（JST）
+        ax.text(dfp.index[-1], y_last, text, va="center", fontsize=9,
+                bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=0.6))
+
+        # 右端点に小さなマーカー（視認性アップ）
+        ax.plot([dfp.index[-1]], [y_last], marker="o", markersize=3)
+
+    # 軸まわり
     jst = timezone(timedelta(hours=9))
-    ax.set_title(f"{side.upper()}-score Trails (last 168h, top {topn}) — "
-                 f"{dfp.index[-1].tz_convert(jst).strftime('%Y-%m-%d %H:%M')} JST"
-                 if hasattr(dfp.index, "tz") and dfp.index.tz is not None
-                 else f"{side.upper()}-score Trails (last 168h, top {topn})")
+    title_ts = (dfp.index[-1].tz_convert(jst).strftime("%Y-%m-%d %H:%M JST")
+                if getattr(dfp.index, "tz", None) else "")
+    ax.set_title(f"{side.upper()}-score Trails (last 168h, top {topn})"
+                 + (f" — {title_ts}" if title_ts else ""))
+    ax.set_ylabel("Score (z)"); ax.set_xlabel("Time")
 
-    ax.set_ylabel("Score (z)")
-    ax.set_xlabel("Time")
-
-    # 時刻の表示（JSTにしたい場合）
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M"))
-    plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
+    plt.setp(ax.get_xticklabels(), rotation=28, ha="right")
 
-    # 余白と上下レンジ（±をそろえて見やすく）
-    lim = float(max(abs(dfp.min().min()), abs(dfp.max().max()))) + 0.1
+    # 上下レンジは±対称に（見やすさ安定）
+    lim = float(max(abs(np.nanmin(dfp.values)), abs(np.nanmax(dfp.values)))) + 0.1
     ax.set_ylim(-lim, lim)
-    ax.margins(x=0.02)
+    ax.margins(x=0.03)
 
     fig.tight_layout()
     fname = fname or f"score_trails_{side}.png"
@@ -98,6 +112,7 @@ def plot_trails(side: str, topn: int = 20, fname: str = None):
     plt.close(fig)
     print(f"[TRAILS] wrote {fname}")
     return fname
+
 
 
 COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
@@ -367,6 +382,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
