@@ -3,7 +3,11 @@ name: Trails Feeder (15m)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"   # 15分ごと（お好みで 10/30分などに変更可）
+    - cron: '*/15 * * * *'   # 15分ごと
+
+concurrency:
+  group: trails-feeder
+  cancel-in-progress: false
 
 jobs:
   trails:
@@ -11,45 +15,49 @@ jobs:
     permissions:
       contents: write
     env:
-      MPLBACKEND: Agg
+      MPLBACKEND: 'Agg'
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: '3.11'
+          cache: 'pip'
 
-      # yq は exclude_ids 注入に使う（daily と同じ設定を踏襲）
       - name: Install yq
         run: |
           curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
 
       - name: Load env & inject excludes
-      shell: bash
-      run: |
-        set -euo pipefail
-        set -a
-        source .github/workflows/largecap-watch.env
-        set +a
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .github/workflows/largecap-watch.env
+          set +a
 
-        FILES="config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml"
+          FILES="config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml"
 
-        # exclude_ids をあるファイルにだけ注入
-        for f in $FILES; do
-          [ -f "$f" ] || continue
-          /usr/local/bin/yq '
-            .exclude_ids = ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // [])) |
-            .exclude     = .exclude_ids
-          ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-        done
+          # あるファイルにだけ exclude_ids を注入
+          for f in $FILES; do
+            if [ -f "$f" ]; then
+              /usr/local/bin/yq '
+                .exclude_ids = ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // [])) |
+                .exclude     = .exclude_ids
+              ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+            fi
+          done
 
-        # effective をあるファイルだけ生成
-        for base in $FILES; do
-          [ -f "$base" ] || continue
-          /usr/local/bin/yq '.' "$base" > "${base%.yaml}.effective.yaml"
-        done
+          # あるファイルだけ effective を生成
+          for base in $FILES; do
+            if [ -f "$base" ]; then
+              /usr/local/bin/yq '.' "$base" > "${base%.yaml}.effective.yaml"
+            fi
+          done
+
+          echo "Prepared effective configs:"
+          ls -1 *.effective.yaml || true
 
       - name: Install deps
         run: |
@@ -57,16 +65,23 @@ jobs:
           pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
 
       - name: Update Trails (no Discord)
-      shell: bash
-      run: |
-        CFG="config_largecap_compare_scheduler.effective.yaml"
-        [ -f "$CFG" ] || CFG="config_largecap_compare.effective.yaml"
-        python run_compare_scheduler.py \
-          --config "$CFG" \
-          --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
-          --label "Trails Feeder"
+        shell: bash
+        run: |
+          set -euo pipefail
+          CFG="config_largecap_compare_scheduler.effective.yaml"
+          if [ ! -f "$CFG" ]; then
+            CFG="config_largecap_compare.effective.yaml"
+          fi
+          if [ ! -f "$CFG" ]; then
+            echo "::error::No compare config found (looked for *_compare*.effective.yaml)."
+            exit 1
+          fi
+          echo "Using config: $CFG"
+          python run_compare_scheduler.py \
+            --config "$CFG" \
+            --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
+            --label "Trails Feeder"
 
-      # CSV をコミットして履歴を持続
       - name: Commit & push trails
         run: |
           git config user.name  "github-actions[bot]"
