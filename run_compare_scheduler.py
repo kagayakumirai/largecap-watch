@@ -81,11 +81,59 @@ def summarize(csv_path: Path, top_n: int = 5) -> str:
         lines = [f"Top{top_n} (btc→usd):"]
         for _, r in top.iterrows():
             lines.append(f"- {r['symbol']}: usd={r['usd_score']:.2f}, btc={r['btc_score']:.2f}, {r['quadrant']}")
+
+            # ==== 最新点をCSVに追記 ====
+            # 例: latest_usd, latest_btc を作る（列名を合わせる）
+            latest_usd = df_usd.rename(columns={"usd_score":"score"})[["symbol","score"]]
+            latest_btc = df_btc.rename(columns={"btc_score":"score"})[["symbol","score"]]
+            persist_trails("usd", latest_usd, hours_keep=168)
+            persist_trails("btc", latest_btc, hours_keep=168)
+
         qorder = ["A 強×強（本命）","B 強×弱（USD強・BTC優位）","C 弱×強（BTC重・アルト優勢）","D 弱×弱（様子見）"]
         lines.append("Quadrants: " + " / ".join([f"{k}:{counts.get(k,0)}" for k in qorder]))
         return "\n".join(lines)
     except Exception as e:
         return f"(summary failed: {e})"
+
+
+# ==== 履歴を読み込み、上位銘柄の Trails を描画 ====
+def plot_trails(side: str, topn: int = 20, fname: str = None):
+    hist = load_trails(side)
+    if hist is None or hist.empty:
+        print(f"[TRAILS] no data for {side}")
+        return None
+
+    # 最新時点の上位 topn を選ぶ
+    last_ts = hist["ts"].max()
+    latest = hist[hist["ts"] == last_ts].sort_values("score", ascending=False)
+    keep_syms = latest["symbol"].head(topn).tolist()
+
+    dfp = (
+        hist[hist["symbol"].isin(keep_syms)]
+        .pivot(index="ts", columns="symbol", values="score")
+        .sort_index()
+    )
+
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(12, 5))
+    dfp.plot(ax=ax, legend=True)
+    ax.axhline(0, color="C0", linewidth=1)
+    ax.set_title(f"{side.upper()}-score Trails (last 168h, top {topn})")
+    ax.set_ylabel("Score (z)")
+    ax.set_xlabel("Time")
+    fig.tight_layout()
+
+    if fname is None:
+        fname = f"score_trails_{side}.png"
+    fig.savefig(fname, dpi=150)
+    plt.close(fig)
+    print(f"[TRAILS] wrote {fname}")
+    return fname
+
+# 実行
+plot_trails("usd", topn=20, fname="score_trails_usd.png")
+plot_trails("btc", topn=20, fname="score_trails_btc.png")
+
 
 
 
