@@ -26,36 +26,35 @@ import requests, yaml, pandas as pd, matplotlib.pyplot as plt
 from pathlib import Path
 import math, sys
 
-TRAILS_DIR = Path("data"); TRAILS_DIR.mkdir(exist_ok=True)
-# いまのスコア df_now: ["symbol","score"] を想定
-ts = _now_jst_iso()                       # ← JST で作成
-cur = df_now[["symbol", "score"]].copy()
-cur.insert(0, "ts", ts)                   # ← 先頭にJSTのタイムスタンプ
-cur.insert(1, "side", side)
-
-out = TRAILS_DIR / f"score_trails_{side}.csv"
-out.parent.mkdir(exist_ok=True, parents=True)
-header = not out.exists()
-cur.to_csv(out, index=False, mode="a", header=header)
-
-def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168):
-    """df_now: columns=['symbol','score']"""
-    ts = datetime.now(timezone.utc)
-    cur = df_now.copy()
+def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Path:
+    """
+    side: 'usd' or 'btc'
+    df_now: columns=['symbol','score'] を想定（“いま”のスコア）
+    """
+    ts = _now_jst_iso()  # ← JSTで書く
+    cur = df_now[["symbol", "score"]].copy()
     cur.insert(0, "ts", ts)
     cur.insert(1, "side", side)
-    out = TRAILS_DIR / f"score_trails_{side}.csv"
+
+    out = Path("data") / f"score_trails_{side}.csv"
+    out.parent.mkdir(exist_ok=True, parents=True)
     header = not out.exists()
     cur.to_csv(out, index=False, mode="a", header=header)
 
-    # 古い行を掃除
-    hist = pd.read_csv(out, parse_dates=["ts"])
-    cutoff = ts - timedelta(hours=hours_keep + 6)
-    hist = hist[hist["ts"] >= cutoff]
-    hist.sort_values(["ts", "symbol"], inplace=True)
-    hist.drop_duplicates(["ts","symbol"], keep="last", inplace=True)
-    hist.to_csv(out, index=False)
+    # 既存も含めて JST に統一しつつ掃除（古い行/重複を整理）
+    try:
+        hist = pd.read_csv(out)
+        hist["ts"] = pd.to_datetime(hist["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
+        cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=hours_keep + 6)  # 余裕6h
+        hist = hist[hist["ts"] >= cutoff]
+        hist.sort_values(["ts", "symbol"], inplace=True)
+        hist.drop_duplicates(["ts", "symbol"], keep="last", inplace=True)
+        hist.to_csv(out, index=False)
+    except Exception:
+        pass
+
     return out
+
 
 def load_trails(side: str):
     p = TRAILS_DIR / f"score_trails_{side}.csv"
@@ -425,6 +424,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
