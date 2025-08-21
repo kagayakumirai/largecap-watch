@@ -7,6 +7,7 @@ from pathlib import Path
 import requests, yaml
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import json, time, pathlib, requests
 from datetime import datetime, timezone, timedelta
 
@@ -16,11 +17,6 @@ UNIVERSE_CACHE = DATA_DIR / "universe_cache.json"
 import requests, yaml, pandas as pd, matplotlib.pyplot as plt
 from pathlib import Path
 import math, sys
-
-# --- 先頭の import 付近に追加 ---
-from pathlib import Path
-from datetime import datetime, timezone, timedelta
-import pandas as pd
 
 TRAILS_DIR = Path("data"); TRAILS_DIR.mkdir(exist_ok=True)
 
@@ -49,24 +45,59 @@ def load_trails(side: str):
 
 def plot_trails(side: str, topn: int = 20, fname: str = None):
     hist = load_trails(side)
-    if hist is None or hist.empty: 
-        print(f"[TRAILS] no data for {side}"); return None
+    if hist is None or hist.empty:
+        print(f"[TRAILS] no data for {side}")
+        return None
+
+    # 最新時点の上位 topn を採用
     last_ts = hist["ts"].max()
-    latest = hist[hist["ts"] == last_ts].sort_values("score", ascending=False)
-    keep = latest["symbol"].head(topn).tolist()
+    latest  = hist[hist["ts"] == last_ts].sort_values("score", ascending=False)
+    keep    = latest["symbol"].head(topn).tolist()
+
+    # ピボット（時系列×銘柄）
     dfp = (hist[hist["symbol"].isin(keep)]
            .pivot(index="ts", columns="symbol", values="score")
            .sort_index())
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(figsize=(12,5))
-    dfp.plot(ax=ax, legend=True)
-    ax.axhline(0, linewidth=1)
-    ax.set_title(f"{side.upper()}-score Trails (last 168h, top {topn})")
-    ax.set_ylabel("Score (z)"); ax.set_xlabel("Time")
+
+    # （任意）ほんの少し平滑化（点が少ないときのギザギザ抑制）
+    # dfp = dfp.rolling(2, min_periods=1).mean()
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    dfp.plot(ax=ax, legend=False)   # まず凡例は消す（あとで右端ラベルに）
+
+    # y=0 の基準線
+    ax.axhline(0, color="0.3", linewidth=1)
+
+    # 右端に各シリーズ名を注釈（凡例で中央が隠れないように）
+    for col in dfp.columns:
+        y = dfp[col].iloc[-1]
+        ax.text(dfp.index[-1], y, f"  {col}", va="center", fontsize=9)
+
+    # タイトルに日時（JST）
+    jst = timezone(timedelta(hours=9))
+    ax.set_title(f"{side.upper()}-score Trails (last 168h, top {topn}) — "
+                 f"{dfp.index[-1].tz_convert(jst).strftime('%Y-%m-%d %H:%M')} JST"
+                 if hasattr(dfp.index, "tz") and dfp.index.tz is not None
+                 else f"{side.upper()}-score Trails (last 168h, top {topn})")
+
+    ax.set_ylabel("Score (z)")
+    ax.set_xlabel("Time")
+
+    # 時刻の表示（JSTにしたい場合）
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M"))
+    plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
+
+    # 余白と上下レンジ（±をそろえて見やすく）
+    lim = float(max(abs(dfp.min().min()), abs(dfp.max().max()))) + 0.1
+    ax.set_ylim(-lim, lim)
+    ax.margins(x=0.02)
+
     fig.tight_layout()
     fname = fname or f"score_trails_{side}.png"
-    fig.savefig(fname, dpi=150); plt.close(fig)
-    print(f"[TRAILS] wrote {fname}"); return fname
+    fig.savefig(fname, dpi=150)
+    plt.close(fig)
+    print(f"[TRAILS] wrote {fname}")
+    return fname
 
 
 COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
@@ -336,6 +367,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
