@@ -13,7 +13,7 @@ import datetime as dt
 import sys
 import shutil
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import yaml
 import json
@@ -67,30 +67,28 @@ def summarize(csv_path: Path, top_n: int = 5) -> str:
 TRAILS_DIR = Path("data")
 TRAILS_DIR.mkdir(exist_ok=True)
 
-def load_trails(side: str) -> pd.DataFrame | None:
+def load_trails(side: str) -> Optional[pd.DataFrame]:
     """
     side: 'usd' or 'btc'
     CSV: data/score_trails_<side>.csv with columns [ts, side, symbol, score]
-    ts は tz付き（推奨）。tzなしでもJSTに合わせる。
+    ts は tz付き/なし混在でも OK。UTC として解釈後 JST へ変換。
     """
     p = TRAILS_DIR / f"score_trails_{side}.csv"
     if not p.exists():
         return None
-    df = pd.read_csv(p, parse_dates=["ts"])
-    # ts を必ず JST に統一
-    try:
-        if getattr(df["ts"].dt, "tz", None) is None:
-            # tz なし → JST として解釈
-            df["ts"] = df["ts"].dt.tz_localize(JST)
-        else:
-            df["ts"] = df["ts"].dt.tz_convert(JST)
-    except Exception:
-        # 文字列などフォールバック（UTC前提→JST）
-        df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert(JST)
+    df = pd.read_csv(p)
+    # ts を必ず tz-aware(UTC) → JST に統一
+    df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
     df.sort_values(["ts", "symbol"], inplace=True)
     return df
 
-def plot_trails(side: str, hours: int = 168, topn: int = 20, smooth: int = 1, out_png: Path | None = None) -> Path | None:
+def plot_trails(
+    side: str,
+    hours: int = 168,
+    topn: int = 20,
+    smooth: int = 1,
+    out_png: Optional[Path] = None
+) -> Optional[Path]:
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
     import numpy as np
@@ -149,7 +147,8 @@ def plot_trails(side: str, hours: int = 168, topn: int = 20, smooth: int = 1, ou
 
     # 右端ラベル（重なり回避の簡易ずらし）
     def _spread_labels(yvals: List[float], min_gap: float) -> List[float]:
-        if not yvals: return yvals
+        if not yvals:
+            return yvals
         y_sorted = sorted(yvals)
         out = [y_sorted[0]]
         for v in y_sorted[1:]:
@@ -182,6 +181,7 @@ def plot_trails(side: str, hours: int = 168, topn: int = 20, smooth: int = 1, ou
     ax.set_ylabel("Score (z)")
     ax.set_xlabel("Time")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M", tz=JST))
+    import matplotlib.pyplot as plt  # ensure after setting backend if any
     plt.setp(ax.get_xticklabels(), rotation=28, ha="right")
 
     # 上下レンジは±対称に
@@ -231,7 +231,7 @@ def main():
     ap.add_argument("--interval-min", type=int, default=60)
     ap.add_argument("--repeat", type=int, default=0, help="0=無限, N=回数")
     ap.add_argument("--python", default=sys.executable)
-    ap.add_argument("--webhook-url", default="")
+    ap.add_argument("--webhook-url", dest="webhook_url", default="")
     ap.add_argument("--label", default="LargeCap USD×BTC")
 
     # 推移グラフオプション（このスクリプト内で描画）
@@ -292,7 +292,7 @@ def main():
             trails_pngs = [p for p in [p_btc, p_usd] if p is not None]
 
         # 4) Discord へ送信
-        if args.webhook-url if False else args.webhook_url:  # guard for hyphen typo
+        if args.webhook_url:
             summary = summarize(src_csv) if src_csv.exists() else "(no csv)"
             content = f"**{args.label}**  {stamp_h}\n{summary}"
             atts = [p for p in [src_png, src_csv, dst_png, dst_csv] if p] + trails_pngs
