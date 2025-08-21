@@ -56,13 +56,15 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
 
-      # Trails だけ更新（Discord送信はしない）
       - name: Update Trails (no Discord)
-        run: |
-          python run_compare_scheduler.py \
-            --config config_largecap_compare_scheduler.effective.yaml \
-            --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
-            --label "Trails Feeder"
+      shell: bash
+      run: |
+        CFG="config_largecap_compare_scheduler.effective.yaml"
+        [ -f "$CFG" ] || CFG="config_largecap_compare.effective.yaml"
+        python run_compare_scheduler.py \
+          --config "$CFG" \
+          --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
+          --label "Trails Feeder"
 
       # CSV をコミットして履歴を持続
       - name: Commit & push trails
