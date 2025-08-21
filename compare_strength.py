@@ -11,6 +11,13 @@ import matplotlib.dates as mdates
 import json, time, pathlib, requests
 from datetime import datetime, timezone, timedelta
 import numpy as np
+from zoneinfo import ZoneInfo
+import datetime as dt
+JST = ZoneInfo("Asia/Tokyo")
+
+def _now_jst_iso() -> str:
+    # 例: 2025-08-22T09:15:00+09:00
+    return dt.datetime.now(JST).isoformat(timespec="seconds")
 
 DATA_DIR = pathlib.Path("data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -20,6 +27,28 @@ from pathlib import Path
 import math, sys
 
 TRAILS_DIR = Path("data"); TRAILS_DIR.mkdir(exist_ok=True)
+# いまのスコア df_now: ["symbol","score"] を想定
+ts = _now_jst_iso()                       # ← JST で作成
+cur = df_now[["symbol", "score"]].copy()
+cur.insert(0, "ts", ts)                   # ← 先頭にJSTのタイムスタンプ
+cur.insert(1, "side", side)
+
+out = TRAILS_DIR / f"score_trails_{side}.csv"
+out.parent.mkdir(exist_ok=True, parents=True)
+header = not out.exists()
+cur.to_csv(out, index=False, mode="a", header=header)
+
+# 既存行も含めてJSTに正規化 & 掃除（任意）
+try:
+    hist = pd.read_csv(out)
+    hist["ts"] = pd.to_datetime(hist["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
+    cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=168 + 6)
+    hist = hist[hist["ts"] >= cutoff]
+    hist.sort_values(["ts", "symbol"], inplace=True)
+    hist.drop_duplicates(["ts", "symbol"], keep="last", inplace=True)
+    hist.to_csv(out, index=False)
+except Exception:
+    pass
 
 def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168):
     """df_now: columns=['symbol','score']"""
@@ -408,23 +437,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
