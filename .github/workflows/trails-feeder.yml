@@ -64,21 +64,20 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
 
-      - name: Update Trails(no discord)
+      - name: Update Trails (no Discord)
         shell: bash
         run: |
           set -euo pipefail
-          # compare 用の effective を優先して使う
-          CFG="config_largecap_compare.effective.yaml"
+          CFG="config_largecap_compare_scheduler.effective.yaml"
           if [ ! -f "$CFG" ]; then
-            echo "::error::No compare config found (config_largecap_compare*.effective.yaml)."
-            exit 1
+            CFG="config_largecap_compare.effective.yaml"
           fi
           echo "Using config: $CFG"
-          python compare_strength.py \
+          python run_compare_scheduler.py \
             --config "$CFG" \
-            --trails --hours 168 --topn 20 --smooth 5 \
+            --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
             --label "Trails Feeder"
+
 
 
       - name: Commit & push trails
