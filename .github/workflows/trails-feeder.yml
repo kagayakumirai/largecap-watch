@@ -64,7 +64,7 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
 
-      - name: Update Trails (no Discord)
+      - name: Update Trails(no discord)
         shell: bash
         run: |
           set -euo pipefail
