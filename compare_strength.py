@@ -44,12 +44,24 @@ def load_trails(side: str):
     p = TRAILS_DIR / f"score_trails_{side}.csv"
     return None if not p.exists() else pd.read_csv(p, parse_dates=["ts"]).sort_values(["ts","symbol"])
 
+# 描画はここ
+def _spread_labels(yvals, min_gap):
+    """yvals（データ座標）の配列を、上下min_gap以上あくように順にずらす簡易アルゴリズム"""
+    if not yvals: return yvals
+    y = sorted(yvals)
+    out = [y[0]]
+    for v in y[1:]:
+        out.append(max(v, out[-1] + min_gap))
+    # 元の順序に戻すためのマップを返す
+    order = np.argsort(yvals)
+    placed = {int(order[i]): out[i] for i in range(len(out))}
+    return [placed[i] for i in range(len(yvals))]
+
 def plot_trails(side: str, topn: int = 20, fname: str = None):
     hist = load_trails(side)
     if hist is None or hist.empty:
         print(f"[TRAILS] no data for {side}"); return None
 
-    # 最新時点の上位 topn を対象（これまで通り）
     last_ts = hist["ts"].max()
     latest  = hist[hist["ts"] == last_ts].sort_values("score", ascending=False)
     keep    = latest["symbol"].head(topn).tolist()
@@ -59,36 +71,50 @@ def plot_trails(side: str, topn: int = 20, fname: str = None):
            .sort_index())
 
     fig, ax = plt.subplots(figsize=(12, 5))
-    dfp.plot(ax=ax, legend=False, linewidth=1.6)
 
-    # y=0 基準線
-    ax.axhline(0, color="0.4", linewidth=1)
-
-    # 右端ラベルは「直近の変化が大きい」順に厳選
+    # 直近の動き（Δ1）と現在値で“主役”を選ぶ
     if dfp.shape[0] >= 2:
         delta = (dfp.iloc[-1] - dfp.iloc[-2]).abs()
-        movers = set(delta.nlargest(min(8, len(delta))).index)     # 動いた上位
+        movers = set(delta.nlargest(min(8, len(delta))).index)
     else:
         movers = set()
+    top_now = set(dfp.iloc[-1].nlargest(min(8, dfp.shape[1])).index)
+    label_cols = list(top_now | movers)
 
-    top_now = set(dfp.iloc[-1].nlargest(min(8, dfp.shape[1])).index)  # 現在値の上位
-    label_cols = list(top_now | movers)   # 両者の和集合だけラベル
-
-    # 右端に銘柄＋矢印（↑↓→）＋Δz を表示
+    # 線：主役（濃く・太く）とその他（薄く）
     for col in dfp.columns:
-        y_last = float(dfp[col].iloc[-1])
-        if dfp.shape[0] >= 2:
-            dz = y_last - float(dfp[col].iloc[-2])
+        series = dfp[col]
+        if col in label_cols:
+            ax.plot(series.index, series.values, linewidth=2.2, zorder=3)
         else:
-            dz = 0.0
-        arrow = "↑" if dz > 0.001 else ("↓" if dz < -0.001 else "→")
-        text = f"  {col}" + (f" {arrow}{dz:+.2f}" if col in label_cols else "")
+            ax.plot(series.index, series.values, linewidth=1.2, alpha=0.35, zorder=2)
 
-        ax.text(dfp.index[-1], y_last, text, va="center", fontsize=9,
-                bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=0.6))
+    # y=0
+    ax.axhline(0, color="0.3", linewidth=1)
 
-        # 右端点に小さなマーカー（視認性アップ）
-        ax.plot([dfp.index[-1]], [y_last], marker="o", markersize=3)
+    # 右側に余白（ラベル用）
+    x0, x1 = dfp.index[0], dfp.index[-1]
+    pad = (x1 - x0) * 0.10
+    ax.set_xlim(x0, x1 + pad)
+
+    # 右端ラベル：重なり回避して配置
+    y_last_raw = [float(dfp[c].iloc[-1]) for c in label_cols]
+    # データ座標のレンジから最小間隔（例：全幅の3%）
+    yr = ax.get_ylim(); min_gap = (yr[1] - yr[0]) * 0.03
+    y_last = _spread_labels(y_last_raw, min_gap)
+
+    for (col, y0, y_adj) in zip(label_cols, y_last_raw, y_last):
+        dz = 0.0
+        if dfp.shape[0] >= 2:
+            dz = float(dfp[col].iloc[-1] - dfp[col].iloc[-2])
+        arrow = "↑" if dz > 1e-3 else ("↓" if dz < -1e-3 else "→")
+        ax.text(dfp.index[-1] + pad*0.02, y_adj,
+                f"{col} {arrow} {dz:+.2f}",
+                va="center", fontsize=9,
+                bbox=dict(facecolor="white", alpha=0.65, edgecolor="none", pad=0.4),
+                clip_on=False, zorder=5)
+        # 右端の小マーカー
+        ax.plot([dfp.index[-1]], [y0], marker="o", markersize=3, zorder=4)
 
     # 軸まわり
     jst = timezone(timedelta(hours=9))
@@ -97,21 +123,21 @@ def plot_trails(side: str, topn: int = 20, fname: str = None):
     ax.set_title(f"{side.upper()}-score Trails (last 168h, top {topn})"
                  + (f" — {title_ts}" if title_ts else ""))
     ax.set_ylabel("Score (z)"); ax.set_xlabel("Time")
-
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M"))
     plt.setp(ax.get_xticklabels(), rotation=28, ha="right")
 
-    # 上下レンジは±対称に（見やすさ安定）
+    # 上下レンジは±対称にして安定表示
     lim = float(max(abs(np.nanmin(dfp.values)), abs(np.nanmax(dfp.values)))) + 0.1
     ax.set_ylim(-lim, lim)
-    ax.margins(x=0.03)
 
     fig.tight_layout()
     fname = fname or f"score_trails_{side}.png"
-    fig.savefig(fname, dpi=150)
+    fig.savefig(fname, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"[TRAILS] wrote {fname}")
     return fname
+
+
 
 
 
@@ -382,6 +408,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
