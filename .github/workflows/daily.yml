@@ -46,7 +46,7 @@ jobs:
           WEETH: wrapped-eeth        # ← WEETH は wrapped-eeth が正
           WBETH: wrapped-beacon-eth
           WSTETH: wrapped-steth
-          UNISTETH: 
+          STETH: staked-ether
           USDT: tether
           USDC: usd-coin
           BUSD: binance-usd
