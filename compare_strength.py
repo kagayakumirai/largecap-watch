@@ -40,7 +40,7 @@ cur.to_csv(out, index=False, mode="a", header=header)
 
 def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168):
     """df_now: columns=['symbol','score']"""
-    ts = datetime.now(timezone.jst)
+    ts = datetime.now(timezone.utc)
     cur = df_now.copy()
     cur.insert(0, "ts", ts)
     cur.insert(1, "side", side)
@@ -425,6 +425,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
