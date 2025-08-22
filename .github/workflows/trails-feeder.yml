@@ -35,7 +35,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-      
+          pip install -q pyyaml   # ←これを最初に追加
+          
           # .env があれば読み込む（無ければスキップ）
           set -a
           source .github/workflows/largecap-watch.env || true
