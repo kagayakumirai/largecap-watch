@@ -67,6 +67,12 @@ jobs:
       - name: Update trails + run compare (15m)
         run: |
           set -euo pipefail
+          /usr/local/bin/yq '
+            .exclude_ids = (
+              ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // []))
+            ) |
+            .exclude = .exclude_ids
+          ' config_largecap_compare.yaml > config_largecap_compare.effective.yaml
 
           # 1) compare を実行（USD×BTC 散布図とCSVを作成）
           python compare_strength.py --config config_largecap_compare.effective.yaml
