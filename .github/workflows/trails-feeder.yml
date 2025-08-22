@@ -45,9 +45,9 @@ jobs:
           # 3) 値が JSON 配列でない/未設定でも安全に [] にする
           EX="${LARGECAP_EXCLUDE:-[]}"
           python - "$EX" <<'PY' >/dev/null 2>&1 || EX='[]'
-      import json, sys
-      json.loads(sys.argv[1])
-      PY
+          import json, sys
+          json.loads(sys.argv[1])
+          PY
 
           # 4) すべての設定に exclude_ids を注入（存在するファイルだけ処理）
           FILES="config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml"
