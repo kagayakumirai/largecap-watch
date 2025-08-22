@@ -34,32 +34,25 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 1) .env を読み込み（JSON で LARGECAP_EXCLUDE が入っている想定）
+          # 1) .env を読み込む（JSON配列を想定）
           set -a
           source .github/workflows/largecap-watch.env
           set +a
 
-          # 2) 次のステップにも引き継ぐ
-          echo "LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}" >> "$GITHUB_ENV"
-
-          # 3) 値が JSON 配列でない/未設定でも安全に [] にする
+          # 2) LARGECAP_EXCLUDE を JSON 配列として保証（壊れてたら []）
           EX="${LARGECAP_EXCLUDE:-[]}"
-          python - "$EX" <<'PY' >/dev/null 2>&1 || EX='[]'
-          import json, sys
-          json.loads(sys.argv[1])
-          PY
+          python -c "import json,os; json.loads(os.environ.get('LARGECAP_EXCLUDE','[]'))" 2>/dev/null || EX='[]'
 
-          # 4) すべての設定に exclude_ids を注入（存在するファイルだけ処理）
-          FILES="config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml"
+          # 3) 後続ステップに引き継ぎ
+          echo "LARGECAP_EXCLUDE=$EX" >> "$GITHUB_ENV"
+          
+          # 4) effective YAML を生成（存在するファイルだけ処理）
+          FILES='config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml'
           for f in $FILES; do
             [[ -f "$f" ]] || continue
             yq -oy '.exclude_ids = $EX' --argjson EX "$EX" "$f" > "${f%.yaml}.effective.yaml"
             echo "Prepared effective: ${f%.yaml}.effective.yaml"
           done
-
-
-          echo "Prepared effective configs:"
-          ls -1 *.effective.yaml || true
 
       - name: Install deps
         run: |
