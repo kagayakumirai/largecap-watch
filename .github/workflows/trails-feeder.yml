@@ -42,16 +42,16 @@ jobs:
           # LARGECAP_EXCLUDE を Python で検証し、ダメなら [] にフォールバック
           EX_JSON="$(
             python - <<'PY'
-      import os, json
-      ex = os.environ.get("LARGECAP_EXCLUDE", "[]")
-      try:
-          json.loads(ex)
-      except Exception:
-          ex = "[]"
-      print(ex)
-      PY
-          )"
-          echo "Using EXCLUDE: ${EX_JSON}"
+            import os, json
+            ex = os.environ.get("LARGECAP_EXCLUDE", "[]")
+            try:
+                json.loads(ex)
+            except Exception:
+                ex = "[]"
+            print(ex)
+            PY
+            )"
+            echo "Using EXCLUDE: ${EX_JSON}"
 
           # この 3 つの YAML を基に .effective.yaml を作る（exclude_ids を差し込み/置換）
           FILES="config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml"
