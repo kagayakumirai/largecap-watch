@@ -33,7 +33,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           # .env を読み込む（無ければスキップ）
           set -a
           source .github/workflows/largecap-watch.env 2>/dev/null || true
@@ -66,7 +65,7 @@ jobs:
             fi
             echo "made $dst"
           done
-
+          
       - name: Install deps
         run: |
           python -m pip install -U pip
