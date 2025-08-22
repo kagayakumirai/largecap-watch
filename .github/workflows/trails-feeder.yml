@@ -35,33 +35,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-      
-          # .env を読む（無ければスキップでもOK）
+          # .env があれば取り込み（なくてもOK）
           set -a
           source .github/workflows/largecap-watch.env || true
           set +a
       
-          # 1) LARGECAP_EXCLUDE を JSON 配列としてバリデーション（壊れてたら "[]" へ）
+          # 1) LARGECAP_EXCLUDE を JSON として検証（壊れてたら [] にフォールバック）
           EX_JSON="$(
-          python - <<'PY'
-          import os, json, sys
-          ex = os.environ.get('LARGECAP_EXCLUDE', '[]')
-          try:
-              json.loads(ex)
-          except Exception:
-            ex = '[]'
-          sys.stdout.write(ex)
-          PY
-          )"
-          echo "[LOG] exclude = ${EX_JSON}"
+            python - <<'PY'
+            import os, json, sys
+            ex = os.environ.get('LARGECAP_EXCLUDE', '[]')
+            try:
+                json.loads(ex)
+            except Exception:
+                ex = '[]'
+            sys.stdout.write(ex)
+            PY
+                )"
+                echo "[LOG] exclude = ${EX_JSON}"
+                export EX_JSON  # ← これ必須
       
-          # 2) 4つのconfigに exclude_ids を注入（yq v4）
-          FILES="config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml"
-          for f in $FILES; do
+          # 2) 4つの config に exclude_ids を注入
+          for f in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml; do
             [ -f "$f" ] || continue
-            # env(EX_JSON) を使って JSON を渡す。flow スタイル（[]）で書く。
             yq -i '.exclude_ids = env(EX_JSON) | .exclude_ids style="flow"' "$f"
           done
+
 
 
 
