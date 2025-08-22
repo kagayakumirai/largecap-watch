@@ -28,12 +28,15 @@ jobs:
           chmod +x /usr/local/bin/yq
           /usr/local/bin/yq --version
 
-      # .env を以降の全ステップで使えるように登録
       - name: Export .env to GITHUB_ENV
         run: |
+          # CRLF除去 → コメント行除去 → GITHUB_ENVへ
           sed -e 's/\r$//' .github/workflows/largecap-watch.env \
-            | grep -v '^\s*#' >> "$GITHUB_ENV"
-          echo "LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-UNSET}"
+            | grep -Ev '^[[:space:]]*#' >> "$GITHUB_ENV"
+      
+          # デバッグ表示（値の頭だけ）
+          echo "LARGECAP_EXCLUDE(head): ${LARGECAP_EXCLUDE:0:120}"
+
 
       - name: Build effective configs (force exclude_ids)
         run: |
