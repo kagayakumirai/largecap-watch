@@ -136,6 +136,11 @@ jobs:
           wait = 60 + random.randint(0,30)
           print(f"sleep {wait}s to avoid 429"); time.sleep(wait)
           PY
+      - name: Check effective config values
+        run: |
+          echo "[BASE] top_mcap_n = $(yq -e '.top_mcap_n' config_largecap_compare.yaml)"
+          echo "[EFF ] top_mcap_n = $(yq -e '.top_mcap_n' config_largecap_compare.effective.yaml)"
+          echo "[ENV ] LARGECAP_TOP=${LARGECAP_TOP:-unset}"
 
       - name: Run compare & send to Discord (simple, once a day)
         env:
