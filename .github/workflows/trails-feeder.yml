@@ -52,8 +52,8 @@ jobs:
               ex = '[]'
             sys.stdout.write(ex)
             PY
-          )"
-          echo "[LOG] exclude = ${EX_JSON}"
+            )"
+            echo "[LOG] exclude = ${EX_JSON}"
       
           # 2) 4つのconfigに exclude_ids を注入（yq v4）
           FILES="config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml"
