@@ -161,6 +161,8 @@ jobs:
           ids = resolve_universe(cfg)
           print("[DBG] resolved ids n:", len(ids))
           print("[DBG] sample ids    :", ids[:10])
+          # 禁止IDが残っていないか（euro-coin を例に）
+          print("[DBG] still present euro-coin?:", "euro-coin" in ids)
           PY
 
 
