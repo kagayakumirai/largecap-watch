@@ -89,20 +89,16 @@ jobs:
           pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
 
       - name: Update trails + run compare (15m)
-        shell: bash
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK || '' }}
         run: |
           set -euo pipefail
+          # 1) .env を読み込む（除外/件数をdailyと同じに）
+          sed -e 's/\r$//' .github/workflows/largecap-watch.env \
+            | grep -Ev '^[[:space:]]*#' >> "$GITHUB_ENV"
           echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
       
-          # Trails CSV→PNG 更新
-          python history_aggregate.py
-          python plot_score_trails.py --metric btc --hours 168 --topn 20 --smooth 3
-          python plot_score_trails.py --metric usd --hours 168 --topn 20 --smooth 3
-      
-          # 比較本体（--trails 等の未知オプションは付けない）
+          # 2) 比較実行（中で data/score_trails_usd|btc.csv に追記される）
           python compare_strength.py --config config_largecap_compare.yaml
+
 
 
       - name: Commit & push trails
