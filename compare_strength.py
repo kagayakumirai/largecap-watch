@@ -2,17 +2,19 @@
 # -*- coding: utf-8 -*-
 # USD建て × BTC建て 強弱を比較（ログ多め＆保存先固定）
 
+import os, ast, re
 import argparse, math, sys
 from pathlib import Path
 import requests, yaml
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import json, time, pathlib, requests
 from datetime import datetime, timezone, timedelta
 import numpy as np
 from zoneinfo import ZoneInfo
 import datetime as dt
+import json
+import pathlib
 
 JST = ZoneInfo("Asia/Tokyo")
 TRAILS_DIR = Path("data")
@@ -25,13 +27,9 @@ DATA_DIR = pathlib.Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 UNIVERSE_CACHE = DATA_DIR / "universe_cache.json"
 
-
+# ---------- trails ----------
 def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Path:
-    """
-    side: 'usd' or 'btc'
-    df_now: columns=['symbol','score'] を想定（“いま”のスコア）
-    """
-    ts = _now_jst_iso()  # ← JSTで書く
+    ts = _now_jst_iso()  # JSTで書く
     cur = df_now[["symbol", "score"]].copy()
     cur.insert(0, "ts", ts)
     cur.insert(1, "side", side)
@@ -55,12 +53,11 @@ def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Pa
 
     return out
 
-
 def load_trails(side: str):
     p = TRAILS_DIR / f"score_trails_{side}.csv"
     return None if not p.exists() else pd.read_csv(p, parse_dates=["ts"]).sort_values(["ts","symbol"])
 
-# 描画はここ
+# ---------- plot ----------
 def _spread_labels(yvals, min_gap):
     """yvals（データ座標）の配列を、上下min_gap以上あくように順にずらす簡易アルゴリズム"""
     if not yvals: return yvals
@@ -68,7 +65,6 @@ def _spread_labels(yvals, min_gap):
     out = [y[0]]
     for v in y[1:]:
         out.append(max(v, out[-1] + min_gap))
-    # 元の順序に戻すためのマップを返す
     order = np.argsort(yvals)
     placed = {int(order[i]): out[i] for i in range(len(out))}
     return [placed[i] for i in range(len(yvals))]
@@ -97,7 +93,6 @@ def plot_trails(side: str, topn: int = 20, fname: str = None):
     top_now = set(dfp.iloc[-1].nlargest(min(8, dfp.shape[1])).index)
     label_cols = list(top_now | movers)
 
-    # 線：主役（濃く・太く）とその他（薄く）
     for col in dfp.columns:
         series = dfp[col]
         if col in label_cols:
@@ -105,17 +100,13 @@ def plot_trails(side: str, topn: int = 20, fname: str = None):
         else:
             ax.plot(series.index, series.values, linewidth=1.2, alpha=0.35, zorder=2)
 
-    # y=0
     ax.axhline(0, color="0.3", linewidth=1)
 
-    # 右側に余白（ラベル用）
     x0, x1 = dfp.index[0], dfp.index[-1]
     pad = (x1 - x0) * 0.10
     ax.set_xlim(x0, x1 + pad)
 
-    # 右端ラベル：重なり回避して配置
     y_last_raw = [float(dfp[c].iloc[-1]) for c in label_cols]
-    # データ座標のレンジから最小間隔（例：全幅の3%）
     yr = ax.get_ylim(); min_gap = (yr[1] - yr[0]) * 0.03
     y_last = _spread_labels(y_last_raw, min_gap)
 
@@ -129,10 +120,8 @@ def plot_trails(side: str, topn: int = 20, fname: str = None):
                 va="center", fontsize=9,
                 bbox=dict(facecolor="white", alpha=0.65, edgecolor="none", pad=0.4),
                 clip_on=False, zorder=5)
-        # 右端の小マーカー
         ax.plot([dfp.index[-1]], [y0], marker="o", markersize=3, zorder=4)
 
-    # 軸まわり
     jst = timezone(timedelta(hours=9))
     title_ts = (dfp.index[-1].tz_convert(jst).strftime("%Y-%m-%d %H:%M JST")
                 if getattr(dfp.index, "tz", None) else "")
@@ -142,7 +131,6 @@ def plot_trails(side: str, topn: int = 20, fname: str = None):
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M"))
     plt.setp(ax.get_xticklabels(), rotation=28, ha="right")
 
-    # 上下レンジは±対称にして安定表示
     lim = float(max(abs(np.nanmin(dfp.values)), abs(np.nanmax(dfp.values)))) + 0.1
     ax.set_ylim(-lim, lim)
 
@@ -153,18 +141,49 @@ def plot_trails(side: str, topn: int = 20, fname: str = None):
     print(f"[TRAILS] wrote {fname}")
     return fname
 
-
-
-
-
+# ---------- universe ----------
 COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
-DEFAULT_EXCLUDE = {
+DEFAULT_EXCLUDE: set[str] = set()  # 追加の既定除外があればここへ
+
+# symbol→id のフォールバック（必要に応じて拡張）
+SYMBOL_TO_ID_FALLBACK = {
+    "USDE":"ethena-usde","WETH":"weth","WEETH":"wrapped-eeth","WBETH":"wrapped-beacon-eth",
+    "WSTETH":"wrapped-steth","STETH":"staked-ether",
+    "USDT":"tether","USDC":"usd-coin","BUSD":"binance-usd","FDUSD":"first-digital-usd",
+    "TUSD":"true-usd","PYUSD":"paypal-usd","WBTC":"wrapped-bitcoin",
+    "LEO":"leo-token","BGB":"bitget-token","OKB":"okb","CRO":"crypto-com-chain",
+    "KCS":"kucoin-shares","GT":"gatechain-token","HT":"huobi-token",
 }
 
-def fetch_top_mcap_ids(n=12, exclude=None):
-    if exclude is None:
-        exclude = set()
+def _parse_listish(s: str | None) -> list[str]:
+    if not s: return []
+    s = s.strip()
+    # 外側の一組のクォートを剥がす（"['A','B']" 対策）
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        s = s[1:-1]
+    if s.startswith("[") and s.endswith("]"):
+        try:
+            return [str(x).strip() for x in ast.literal_eval(s)]
+        except Exception:
+            pass
+    if "," in s:
+        return [x.strip() for x in s.split(",") if x.strip()]
+    return [x for x in re.split(r"\s+", s) if x]
+
+def to_id_lower(sym_or_id: str) -> str:
+    """
+    symbolならフォールバック表でCoinGecko idへ、どちらにせよ小文字idを返す。
+    """
+    u = str(sym_or_id).upper()
+    return (SYMBOL_TO_ID_FALLBACK.get(u, sym_or_id)).lower()
+
+def fetch_top_mcap_ids(n: int = 12, exclude=None):
+    """
+    Top時価総額の CoinGecko ID を取得して返す（IDは小文字）。
+    exclude は id の集合/リストを想定（小文字比較）。
+    """
+    exclude_set = {str(x).lower() for x in (exclude or set())}
     params = {
         "vs_currency": "usd",
         "order": "market_cap_desc",
@@ -175,10 +194,11 @@ def fetch_top_mcap_ids(n=12, exclude=None):
     r = requests.get(COINGECKO_URL, params=params, timeout=30)
     r.raise_for_status()
     rows = r.json()
+
     ids = []
     for x in rows:
-        cid = x.get("id")
-        if not cid or cid in exclude:
+        cid = str(x.get("id") or "").lower()
+        if not cid or cid in exclude_set:
             continue
         ids.append(cid)
         if len(ids) >= n:
@@ -186,49 +206,53 @@ def fetch_top_mcap_ids(n=12, exclude=None):
     return ids
 
 def resolve_universe(cfg):
-    mode = (cfg.get("universe_mode") or "manual").lower()
+    # --- universe_mode を正規化 ---
+    mode_raw = (cfg.get("universe_mode") or "manual").strip().lower()
+    if mode_raw in {"top_mcap","top-mcap","top","mcap"}:
+        mode = "top_mcap"
+    else:
+        # manual / universe / list などはすべて manual 扱い
+        mode = "manual"
 
     # なんでもリスト化する小道具
     def _as_list(x):
-        if x is None:
-            return []
-        if isinstance(x, (list, tuple, set)):
-            return list(x)
+        if x is None: return []
+        if isinstance(x, (list, tuple, set)): return list(x)
         return [x]
 
-    def _norm(x):
-        return str(x).upper()
-
     # include
-    include = _as_list(cfg.get("include_ids"))
+    include = [to_id_lower(x) for x in _as_list(cfg.get("include_ids"))]
 
-    # exclude_ids / exclude を安全にマージ（nullや単体文字列を許容）
+    # env の除外（symbolでもidでも可）
+    env_ex_syms = [x.upper() for x in _parse_listish(os.getenv("LARGECAP_EXCLUDE",""))]
+
+    # config 側の exclude_ids / exclude を安全にマージ（nullや単体文字列を許容）
     ex_ids   = _as_list(cfg.get("exclude_ids"))
     ex_alias = _as_list(cfg.get("exclude"))          # 互換キーも許容
-    ex_all   = [_norm(s) for s in (ex_ids + ex_alias) if s is not None]
+    ex_all   = env_ex_syms + ex_ids + ex_alias
 
-    # 既定excludeも含めて、すべて大文字で集合化
-    exclude = {_norm(x) for x in DEFAULT_EXCLUDE} | set(ex_all)
+    # 既定excludeも含めて、最終的に **id小文字** の集合へ
+    exclude_ids_lower = {to_id_lower(x) for x in (set(DEFAULT_EXCLUDE) | set(ex_all))}
 
     if mode == "top_mcap":
-        n = int(cfg.get("top_mcap_n", 12))
-        ids = fetch_top_mcap_ids(n=n, exclude=exclude)
-        # 念のため最終フィルタも大文字で
-        ids = [i for i in ids if _norm(i) not in exclude]
-        return list(dict.fromkeys(include + ids))  # include を先頭にマージ
-
+        # env 優先 → cfg → 既定12
+        n = int(os.getenv("LARGECAP_TOP") or cfg.get("top_mcap_n", 12))
+        ids = fetch_top_mcap_ids(n=n, exclude=exclude_ids_lower)
+        ids = [i for i in ids if i.lower() not in exclude_ids_lower]
+        # include を先頭にマージ（重複排除）
+        ids = list(dict.fromkeys(include + ids))
+        print(f"[DBG] universe_mode=top_mcap, n={n}, resolved={len(ids)}")
+        return ids
     else:
-        ids = _as_list(cfg.get("universe_ids"))
+        ids = [to_id_lower(x) for x in _as_list(cfg.get("universe_ids"))]
         if not ids:
-            raise ValueError("manual モードでは universe_ids を配列で指定してください")
-        ids = list(dict.fromkeys(include + list(ids)))
-        return [c for c in ids if _norm(c) not in exclude]
+            raise ValueError("manual モードでは universe_ids を配列で指定してください（CoinGecko id）")
+        ids = list(dict.fromkeys(include + ids))
+        ids = [c for c in ids if c.lower() not in exclude_ids_lower]
+        print(f"[DBG] universe_mode=manual, resolved={len(ids)}")
+        return ids
 
-
-
-
-
-CG_MARKETS = "https://api.coingecko.com/api/v3/coins/markets"
+# ---------- fetch ----------
 CG_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
 def log(msg): print(f"[LOG] {msg}")
@@ -251,6 +275,7 @@ def fetch(ids, vs):
     log(f"fetch done vs={vs}, rows={len(js)}")
     return js
 
+# ---------- scoring ----------
 def zscore(s):
     s = pd.Series(s, dtype="float64")
     mu, sd = s.mean(), s.std(ddof=0)
@@ -277,6 +302,7 @@ def score_btc(df, w, use_vol, vol_w):
         comp = comp + vol_w*(1/(1+exp(-zv)) - 0.5)
     return comp
 
+# ---------- main ----------
 def main():
     print("== compare_strength starting ==")  # バナー
 
@@ -344,18 +370,15 @@ def main():
         return "D 弱×弱（様子見）"
     df["quadrant"] = [label(u,b) for u,b in zip(df["usd_score"], df["btc_score"])]
 
-    # 例: df は ['symbol','usd_z','btc_z', ...] を含む
+    # trails
     latest_usd = df[["symbol","usd_score"]].rename(columns={"usd_score":"score"})
     latest_btc = df[["symbol","btc_score"]].rename(columns={"btc_score":"score"})
     persist_trails("usd", latest_usd)
     persist_trails("btc", latest_btc)
 
-    # 折れ線PNG作成
     plot_trails("usd", topn=20, fname="score_trails_usd.png")
     plot_trails("btc", topn=20, fname="score_trails_btc.png")
 
-
-    
     out_csv = out_dir / cfg.get("out_csv", "largecap_compare.csv")
     out_png = out_dir / cfg.get("out_png_scatter", "largecap_usd_vs_btc.png")
 
@@ -365,13 +388,13 @@ def main():
     df.sort_values(["btc_score","usd_score"], ascending=False)[out_cols].to_csv(out_csv, index=False)
     log(f"wrote CSV: {out_csv}")
 
-    # ==== compare フィルタ＆スコア（取りこぼし回避版） ====
+    # ==== compare フィルタ＆スコア ====
     src_topn  = int(cfg.get("compare_source_topn", 30))   # 片側で参照するTopN
     cmp_topn  = int(cfg.get("compare_top_n", 20))         # 最終表示数
     guard_min = float(cfg.get("compare_guard_min", 0.0))  # 両軸の最低ライン(z)
     lam       = float(cfg.get("compare_penalty_lambda", 0.3))  # 不均衡ペナルティ
+    sort_mode = str(cfg.get("compare_sort", "sum")).lower()
 
-    # …usd_z / btc_z を作り終えた直後（フィルタに入る前）に置く
     sym_col = "symbol" if "symbol" in df.columns else None
     original_df = df.set_index(sym_col, drop=False).copy() if sym_col else df.copy()
 
@@ -384,26 +407,32 @@ def main():
     mask_guard = (df["usd_score"] >= guard_min) & (df["btc_score"] >= guard_min)
     df = df.loc[mask_or & mask_guard].copy()
 
-    # スコア = 合計 − λ×不均衡
-    df["score"] = (df["usd_score"] + df["btc_score"]) - lam * (df["usd_score"] - df["btc_score"]).abs()
+    # 並べ替えスコア
+    if sort_mode == "sum":
+        base = df["usd_score"] + df["btc_score"]
+        penalty = lam * (df["usd_score"] - df["btc_score"]).abs()
+        df["score"] = base - penalty
+    elif sort_mode == "abs":
+        df["score"] = df["usd_score"].abs() + df["btc_score"].abs()
+    elif sort_mode == "usd":
+        df["score"] = df["usd_score"]
+    elif sort_mode == "btc":
+        df["score"] = df["btc_score"]
+    else:
+        df["score"] = df["usd_score"] + df["btc_score"]
 
     # 上位 compare_top_n だけ残す（保険：空なら合計で埋める）
     if df.empty:
-        df = backup_df.copy() if "backup_df" in locals() else original_df.copy()  # 任意
+        df = original_df.copy()
         df["score"] = df["usd_score"] + df["btc_score"]
     df = df.sort_values("score", ascending=False).head(cmp_topn)
-    
-    # ⚠ フォールバック（足りないときだけ）
+
+    # ⚠ 足りないときのフォールバック
     if len(df) < cmp_topn:
         need = cmp_topn - len(df)
-        if sym_col:
-            # symbol 基準で“残り”を作る
-            rest = original_df.loc[~original_df.index.isin(df[sym_col])].copy()
-        else:
-            # index 基準（保険）
-            rest = original_df.drop(df.index, errors="ignore").copy()
-
-        rest["score"] = rest["usd_score"] + rest["btc_score"]  
+        rest = original_df.loc[~original_df.index.isin(df[sym_col])] if sym_col else original_df.drop(df.index, errors="ignore")
+        rest = rest.copy()
+        rest["score"] = rest["usd_score"] + rest["btc_score"]
         add = rest.nlargest(need, "score")
         df = pd.concat([df, add], ignore_index=True)
 
@@ -414,18 +443,15 @@ def main():
     label_fs = cfg.get("label_fontsize",7)
     for _, r in df.iterrows():
         plt.annotate(r["symbol"], (r["usd_score"], r["btc_score"]),
-                     xytext=(4,4), textcoords="offset points",fontsize=label_fs)
+                     xytext=(4,4), textcoords="offset points", fontsize=label_fs)
     plt.title("USD-score vs BTC-score (Large-Cap)")
     plt.xlabel("USD composite (z)"); plt.ylabel("BTC-quoted composite (z)")
     plt.tight_layout()
 
     jst = timezone(timedelta(hours=9))
     stamp = datetime.now(jst).strftime("%Y-%m-%d %H:%M")
-    # タイトルに日時
-    
-    ax = plt.gca()  # ← これを追加（いま表示中のAxes）
+    ax = plt.gca()
     ax.set_title(f"USD-score vs BTC-score (Large-Cap) — {stamp} JST")
-    
     x0, x1 = ax.get_xlim(); y0, y1 = ax.get_ylim()
     ax.text(x1*0.98, y1*0.98, "Bull / Bull", ha="right", va="top", fontsize=10, alpha=0.7)
     ax.text(x0*0.02, y1*0.98, "Bear / Bull", ha="left",  va="top", fontsize=10, alpha=0.7)
@@ -448,4 +474,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
