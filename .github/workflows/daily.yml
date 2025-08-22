@@ -164,7 +164,6 @@ jobs:
           PY
 
 
-          print("[DBG] still present euro-coin?:", any(i == "euro-coin" for i in ids))
       - name: Run compare & send to Discord (simple, once a day)
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
