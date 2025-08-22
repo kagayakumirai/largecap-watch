@@ -29,43 +29,44 @@ jobs:
           curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
 
+
+
       - name: Load env & inject excludes
         shell: bash
         run: |
           set -euo pipefail
-          # .env を読み込む（無ければスキップ）
+      
+          # .env を読む（無ければスキップ）
           set -a
-          source .github/workflows/largecap-watch.env 2>/dev/null || true
+          source .github/workflows/largecap-watch.env || true
           set +a
 
-          # LARGECAP_EXCLUDE を Python で検証し、ダメなら [] にフォールバック
+          # LARGECAP_EXCLUDE を JSON 配列として検証。壊れてたら "[]" にフォールバック
           EX_JSON="$(
             python - <<'PY'
-      import os, json
+      import os, json, sys
       ex = os.environ.get("LARGECAP_EXCLUDE", "[]")
       try:
           json.loads(ex)
       except Exception:
           ex = "[]"
-      print(ex)
+      sys.stdout.write(ex)
       PY
           )"
-          echo "Using EXCLUDE: ${EX_JSON}"
 
-          # この 3 つの YAML を基に .effective.yaml を作る（exclude_ids を差し込み/置換）
-          FILES="config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml"
-          for f in $FILES; do
-            dst="${f%.yaml}.effective.yaml"
-            if grep -qE '^[[:space:]]*exclude_ids:' "$f"; then
-              # 既存行を置換
-              sed -E "s@^[[:space:]]*exclude_ids:.*@exclude_ids: ${EX_JSON}@" "$f" > "$dst"
-            else
-              # なければ末尾に追記
-              printf "%s\nexclude_ids: %s\n" "$(cat "$f")" "$EX_JSON" > "$dst"
-            fi
-            echo "made $dst"
+          echo "[env] LARGECAP_EXCLUDE -> ${EX_JSON}"
+      
+          # 対象 YAML へ exclude_ids を注入
+          for f in config_largecap.yaml \
+                   config_largecap_btc.yaml \
+                   config_largecap_compare.yaml \
+                   config_largecap_compare_scheduler.yaml; do
+            [ -f "$f" ] || continue
+            yq eval -i ".exclude_ids = ${EX_JSON}" "$f"
+            echo "[yq] wrote $f"
           done
-          
+
+
       - name: Install deps
         run: |
           python -m pip install -U pip
