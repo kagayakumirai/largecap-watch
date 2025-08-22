@@ -6,8 +6,9 @@ on:
     - cron: '*/15 * * * *'   # 15分ごと
 
 concurrency:
-  group: trails-feeder
-  cancel-in-progress: false
+  group: largecap-15m
+  cancel-in-progress: true
+
 
 jobs:
   trails:
@@ -121,6 +122,11 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
+
             git commit -m "trails: $(TZ=Asia/Tokyo date +'%F %H:%M JST')"
             git push
           fi
+
+      - if: failure()
+        run: curl -X POST -H 'Content-Type: application/json' \
+          -d '{"content":"⚠️ LargeCap 15m 失敗しました"}' "$DISCORD_WEBHOOK"
