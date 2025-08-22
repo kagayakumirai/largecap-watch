@@ -89,29 +89,21 @@ jobs:
           pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
 
       - name: Update trails + run compare (15m)
+        shell: bash
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK || '' }}
         run: |
           set -euo pipefail
-          : "${LARGECAP_EXCLUDE:=[]}"    # ← 未定義なら [] を入れる
-          echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE}"
-          /usr/local/bin/yq '
-            .exclude_ids = (
-              ((.exclude_ids // []) + ((env(LARGECAP_EXCLUDE) | fromjson) // []))
-            ) |
-            .exclude = .exclude_ids
-          ' config_largecap_compare.yaml > config_largecap_compare.effective.yaml
-
-          # 1) compare を実行（USD×BTC 散布図とCSVを作成）
-          python compare_strength.py --config config_largecap_compare.effective.yaml
-
-          # タイムスタンプ付きコピー（JST）
-          STAMP=$(TZ=Asia/Tokyo date +%Y%m%d_%H%M)
-          [ -f largecap_compare.csv ] && cp largecap_compare.csv "largecap_compare_${STAMP}.csv" || true
-          [ -f largecap_usd_vs_btc.png ] && cp largecap_usd_vs_btc.png "largecap_usd_vs_btc_${STAMP}.png" || true
-
-          # 2) trails を更新＆描画（既存のスクリプトを使う）
+          echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
+      
+          # Trails CSV→PNG 更新
           python history_aggregate.py
           python plot_score_trails.py --metric btc --hours 168 --topn 20 --smooth 3
           python plot_score_trails.py --metric usd --hours 168 --topn 20 --smooth 3
+      
+          # 比較本体（--trails 等の未知オプションは付けない）
+          python compare_strength.py --config config_largecap_compare.yaml
+
 
       - name: Commit & push trails
         shell: bash
