@@ -37,7 +37,19 @@ jobs:
           # デバッグ表示（値の頭だけ）
           echo "LARGECAP_EXCLUDE(head): ${LARGECAP_EXCLUDE:0:120}"
 
-
+      - name: Sanity check env
+        run: |
+          echo "TOP=${LARGECAP_TOP:-unset}"
+          python - <<'PY'
+          import os, ast
+          raw = os.getenv("LARGECAP_EXCLUDE","[]")
+          try: 
+            ex = [str(x).upper() for x in ast.literal_eval(raw)]
+          except Exception: ex = []
+          print("EX_COUNT:", len(ex))
+          print("EX_SAMPLE:", ex[:12])
+          PY
+          
       - name: Build effective configs (force exclude_ids)
         run: |
           set -euo pipefail
