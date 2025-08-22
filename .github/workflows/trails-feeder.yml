@@ -54,15 +54,29 @@ jobs:
           PY
           )"
           echo "[LOG] exclude = ${EX_JSON}"
-      
-          # 2) yq に確実に渡す（export でもOKだが前置きが確実）
-          for f in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml config_largecap_compare_scheduler.yaml; do
-            [ -f "$f" ] || continue
-            EX_JSON="$EX_JSON" yq -i '
-              .exclude_ids = (env(EX_JSON) | fromjson) |
-              .exclude_ids style="flow"
-            ' "$f"
-          done
+
+          # 2) YAML を Python で安全に更新
+          python - <<'PY'
+          import os, json, yaml, io
+          ex = json.loads(os.environ.get("EX_JSON", "[]"))
+          
+          files = [
+              "config_largecap.yaml",
+              "config_largecap_btc.yaml",
+              "config_largecap_compare.yaml",
+              "config_largecap_compare_scheduler.yaml",
+          ]
+          
+          for f in files:
+              if not os.path.exists(f):
+                  continue
+              with open(f, "r", encoding="utf-8") as fp:
+                  data = yaml.safe_load(fp) or {}
+              data["exclude_ids"] = ex
+              with open(f, "w", encoding="utf-8") as fp:
+                  yaml.safe_dump(data, fp, allow_unicode=True, sort_keys=False)
+              print("[OK] updated", f)
+          PY
 
 
 
