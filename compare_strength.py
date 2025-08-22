@@ -16,6 +16,44 @@ import datetime as dt
 import json
 import pathlib
 
+import time, random
+
+def _get_json_with_retries(url, params, *, timeout=30, attempts=4):
+    """
+    CoinGecko向け: 429/5xx/ネットワークエラーを指数バックオフで再試行。
+    envに API キーがあれば自動でヘッダ追加（任意）。
+    """
+    sess = requests.Session()
+    headers = {"User-Agent": "largecap-watch/1.0"}
+    # 任意: APIキー（ある場合のみ）
+    if os.getenv("COINGECKO_API_KEY"):
+        # 無料/デモ鍵: x-cg-demo-api-key / 有料鍵: x-cg-pro-api-key のどちらかを使ってください
+        headers["x-cg-demo-api-key"] = os.environ["COINGECKO_API_KEY"]
+
+    last_err = None
+    for i in range(1, attempts + 1):
+        try:
+            r = sess.get(url, params=params, headers=headers, timeout=timeout)
+            # レート制限
+            if r.status_code == 429:
+                wait = r.headers.get("Retry-After")
+                wait = int(wait) if str(wait).isdigit() else 2 ** i
+                log(f"[HTTP429] rate-limited; sleep {wait}s")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            return r.json()
+        except requests.RequestException as e:
+            last_err = e
+            if i == attempts:
+                break
+            # 2^i + 乱数（jitter）で待機
+            wait = min(60, 2 ** i + random.uniform(0, 0.5))
+            log(f"[RETRY] {e}; attempt {i}/{attempts}, sleep {wait:.1f}s")
+            time.sleep(wait)
+    raise RuntimeError(f"GET failed after {attempts} attempts: {last_err}")
+
+
 JST = ZoneInfo("Asia/Tokyo")
 TRAILS_DIR = Path("data")
 TRAILS_DIR.mkdir(parents=True, exist_ok=True)
@@ -179,10 +217,7 @@ def to_id_lower(sym_or_id: str) -> str:
     return (SYMBOL_TO_ID_FALLBACK.get(u, sym_or_id)).lower()
 
 def fetch_top_mcap_ids(n: int = 12, exclude=None):
-    """
-    Top時価総額の CoinGecko ID を取得して返す（IDは小文字）。
-    exclude は id の集合/リストを想定（小文字比較）。
-    """
+    # 除外集合は id 小文字で統一
     exclude_set = {str(x).lower() for x in (exclude or set())}
     params = {
         "vs_currency": "usd",
@@ -191,9 +226,7 @@ def fetch_top_mcap_ids(n: int = 12, exclude=None):
         "page": 1,
         "sparkline": "false",
     }
-    r = requests.get(COINGECKO_URL, params=params, timeout=30)
-    r.raise_for_status()
-    rows = r.json()
+    rows = _get_json_with_retries(COINGECKO_URL, params, timeout=30, attempts=4)
 
     ids = []
     for x in rows:
@@ -204,6 +237,7 @@ def fetch_top_mcap_ids(n: int = 12, exclude=None):
         if len(ids) >= n:
             break
     return ids
+
 
 def resolve_universe(cfg):
     # --- universe_mode を正規化 ---
@@ -260,21 +294,20 @@ def log(msg): print(f"[LOG] {msg}")
 
 def fetch(ids, vs):
     log(f"fetch start vs={vs}, ids={len(ids)}")
-    r = requests.get(
+    js = _get_json_with_retries(
         CG_URL,
-        params={
+        {
             "vs_currency": vs,
             "ids": ",".join(ids),
             "sparkline": "false",
             "price_change_percentage": "1h,24h,7d",
         },
         timeout=30,
+        attempts=4,
     )
-    log(f"status={r.status_code}")
-    r.raise_for_status()
-    js = r.json()
     log(f"fetch done vs={vs}, rows={len(js)}")
     return js
+
 
 # ---------- scoring ----------
 def zscore(s):
@@ -475,4 +508,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
