@@ -187,19 +187,43 @@ def fetch_top_mcap_ids(n=12, exclude=None):
 
 def resolve_universe(cfg):
     mode = (cfg.get("universe_mode") or "manual").lower()
-    exclude = set(DEFAULT_EXCLUDE) | set(cfg.get("exclude_ids", []))
-    include = list(cfg.get("include_ids", []))
+
+    # なんでもリスト化する小道具
+    def _as_list(x):
+        if x is None:
+            return []
+        if isinstance(x, (list, tuple, set)):
+            return list(x)
+        return [x]
+
+    def _norm(x):
+        return str(x).upper()
+
+    # include
+    include = _as_list(cfg.get("include_ids"))
+
+    # exclude_ids / exclude を安全にマージ（nullや単体文字列を許容）
+    ex_ids   = _as_list(cfg.get("exclude_ids"))
+    ex_alias = _as_list(cfg.get("exclude"))          # 互換キーも許容
+    ex_all   = [_norm(s) for s in (ex_ids + ex_alias) if s is not None]
+
+    # 既定excludeも含めて、すべて大文字で集合化
+    exclude = {_norm(x) for x in DEFAULT_EXCLUDE} | set(ex_all)
 
     if mode == "top_mcap":
         n = int(cfg.get("top_mcap_n", 12))
         ids = fetch_top_mcap_ids(n=n, exclude=exclude)
+        # 念のため最終フィルタも大文字で
+        ids = [i for i in ids if _norm(i) not in exclude]
         return list(dict.fromkeys(include + ids))  # include を先頭にマージ
+
     else:
-        ids = cfg.get("universe_ids")
-        if not isinstance(ids, (list, tuple)) or not ids:
+        ids = _as_list(cfg.get("universe_ids"))
+        if not ids:
             raise ValueError("manual モードでは universe_ids を配列で指定してください")
         ids = list(dict.fromkeys(include + list(ids)))
-        return [c for c in ids if c not in exclude]
+        return [c for c in ids if _norm(c) not in exclude]
+
 
 
 
@@ -424,6 +448,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
