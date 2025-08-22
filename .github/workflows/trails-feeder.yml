@@ -81,9 +81,25 @@ jobs:
 
 
       - name: Commit & push trails
+        shell: bash
         run: |
+          set -e
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/score_trails_*.csv data/movers_*.csv || true
-          git commit -m "trails: $(TZ=Asia/Tokyo date +%F_%H%M)" || echo "No changes"
-          git push || true
+
+          # ← ここを“movers_*”ではなく trails の実ファイルに
+          git add data/score_trails_*.csv || true
+          git add score_trails_*.png     || true
+
+          # （必要なら比較PNG/CSVも一緒に）
+          # git add largecap_usd_vs_btc_*.png largecap_compare_*.csv || true
+
+          echo "--- staged changes ---"
+          git status --porcelain
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "trails: $(TZ=Asia/Tokyo date +'%F %H:%M JST')"
+            git push
+          fi
