@@ -65,25 +65,21 @@ jobs:
           pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
 
       - name: Update trails + run compare (15m)
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}   # ←Discord送信いらなければ消してOK
         run: |
           set -euo pipefail
 
-          # compare_strength を実行。trails PNG も同時に作成。
-          python compare_strength.py \
-            --config config_largecap_compare.effective.yaml \
-            --trails --hours 168 --topn 20 --smooth 3 \
-            ${WEBHOOK:+--webhook-url "$WEBHOOK"} \
-            --label "Trails Feeder (15m)"
+          # 1) compare を実行（USD×BTC 散布図とCSVを作成）
+          python compare_strength.py --config config_largecap_compare.effective.yaml
 
-          # compare の出力をJSTタイムスタンプ付きで複写
+          # タイムスタンプ付きコピー（JST）
           STAMP=$(TZ=Asia/Tokyo date +%Y%m%d_%H%M)
-          [ -f largecap_compare.csv ] && cp largecap_compare.csv "largecap_compare_${STAMP}.csv"
-          [ -f largecap_usd_vs_btc.png ] && cp largecap_usd_vs_btc.png "largecap_usd_vs_btc_${STAMP}.png"
+          [ -f largecap_compare.csv ] && cp largecap_compare.csv "largecap_compare_${STAMP}.csv" || true
+          [ -f largecap_usd_vs_btc.png ] && cp largecap_usd_vs_btc.png "largecap_usd_vs_btc_${STAMP}.png" || true
 
-
-
+          # 2) trails を更新＆描画（既存のスクリプトを使う）
+          python history_aggregate.py
+          python plot_score_trails.py --metric btc --hours 168 --topn 20 --smooth 3
+          python plot_score_trails.py --metric usd --hours 168 --topn 20 --smooth 3
 
       - name: Commit & push trails
         shell: bash
