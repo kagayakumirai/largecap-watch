@@ -92,7 +92,7 @@ jobs:
           git add score_trails_*.png     || true
 
           # （必要なら比較PNG/CSVも一緒に）
-          # git add largecap_usd_vs_btc_*.png largecap_compare_*.csv || true
+          git add largecap_usd_vs_btc_*.png largecap_compare_*.csv || true
 
           echo "--- staged changes ---"
           git status --porcelain
