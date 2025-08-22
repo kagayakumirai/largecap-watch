@@ -16,6 +16,7 @@ jobs:
       contents: write
     env:
       MPLBACKEND: 'Agg'
+      LARGECAP_EXCLUDE: '[]'   # ← 未設定でも [] が入る
     steps:
       - uses: actions/checkout@v4
 
