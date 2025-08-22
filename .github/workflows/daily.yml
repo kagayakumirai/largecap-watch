@@ -36,19 +36,25 @@ jobs:
       
           # デバッグ表示（値の頭だけ）
           echo "LARGECAP_EXCLUDE(head): ${LARGECAP_EXCLUDE:0:120}"
-
+      
+      # サニティチェック
       - name: Sanity check env
         run: |
-          echo "TOP=${LARGECAP_TOP:-unset}"
           python - <<'PY'
           import os, ast
-          raw = os.getenv("LARGECAP_EXCLUDE","[]")
-          try: 
-            ex = [str(x).upper() for x in ast.literal_eval(raw)]
-          except Exception: ex = []
+          raw = os.getenv("LARGECAP_EXCLUDE","")
+          print("RAW:", raw[:120])
+          # 外側クォートを剥がす簡易版
+          if (raw.startswith("'") and raw.endswith("'")) or (raw.startswith('"') and raw.endswith('"')):
+              raw = raw[1:-1]
+          try:
+              ex = ast.literal_eval(raw)
+          except Exception as e:
+              ex = []
           print("EX_COUNT:", len(ex))
-          print("EX_SAMPLE:", ex[:12])
+          print("EX_SAMPLE:", ex[:10])
           PY
+
           
       - name: Build effective configs (force exclude_ids)
         run: |
