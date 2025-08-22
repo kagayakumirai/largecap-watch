@@ -64,19 +64,24 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
 
-      - name: Update Trails (no Discord)
-        shell: bash
+      - name: Update trails + run compare (15m)
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}   # ←Discord送信いらなければ消してOK
         run: |
           set -euo pipefail
-          CFG="config_largecap_compare_scheduler.effective.yaml"
-          if [ ! -f "$CFG" ]; then
-            CFG="config_largecap_compare.effective.yaml"
-          fi
-          echo "Using config: $CFG"
-          python run_compare_scheduler.py \
-            --config "$CFG" \
-            --repeat 1 --trails --hours 168 --topn 20 --smooth 5 \
-            --label "Trails Feeder"
+
+          # compare_strength を実行。trails PNG も同時に作成。
+          python compare_strength.py \
+            --config config_largecap_compare.effective.yaml \
+            --trails --hours 168 --topn 20 --smooth 3 \
+            ${WEBHOOK:+--webhook-url "$WEBHOOK"} \
+            --label "Trails Feeder (15m)"
+
+          # compare の出力をJSTタイムスタンプ付きで複写
+          STAMP=$(TZ=Asia/Tokyo date +%Y%m%d_%H%M)
+          [ -f largecap_compare.csv ] && cp largecap_compare.csv "largecap_compare_${STAMP}.csv"
+          [ -f largecap_usd_vs_btc.png ] && cp largecap_usd_vs_btc.png "largecap_usd_vs_btc_${STAMP}.png"
+
 
 
 
