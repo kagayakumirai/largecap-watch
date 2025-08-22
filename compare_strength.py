@@ -213,6 +213,7 @@ def resolve_universe(cfg):
     else:
         # manual / universe / list などはすべて manual 扱い
         mode = "manual"
+        print("[DBG] exclude has euro-coin?:", "euro-coin" in exclude_ids_lower)
 
     # なんでもリスト化する小道具
     def _as_list(x):
@@ -474,3 +475,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
