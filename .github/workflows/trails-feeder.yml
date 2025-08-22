@@ -43,15 +43,15 @@ jobs:
       
           # 1) LARGECAP_EXCLUDE を JSON として検証（壊れてたら []）
           EX_JSON="$(
-            python - <<'PY'
-            import os, json, sys
-            ex = os.environ.get('LARGECAP_EXCLUDE', '[]')
-            try:
+          python - <<'PY'
+          import os, json, sys
+          ex = os.environ.get('LARGECAP_EXCLUDE', '[]')
+          try:
                 json.loads(ex)
-            except Exception:
+          except Exception:
                 ex = '[]'
-            sys.stdout.write(ex)
-            PY
+          sys.stdout.write(ex)
+          PY
           )"
           echo "[LOG] exclude = ${EX_JSON}"
       
