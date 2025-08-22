@@ -42,14 +42,15 @@ jobs:
           # LARGECAP_EXCLUDE を Python で検証し、ダメなら [] にフォールバック
           EX_JSON="$(
             python - <<'PY'
-            import os, json
-            ex = os.environ.get("LARGECAP_EXCLUDE", "[]")
-            try:
-                json.loads(ex)
-            except Exception:
-                ex = "[]"
-            print(ex)
-            PY
+            
+      import os, json
+      ex = os.environ.get("LARGECAP_EXCLUDE", "[]")
+      try:
+          json.loads(ex)
+      except Exception:
+          ex = "[]"
+      print(ex)
+      PY
             )"
             echo "Using EXCLUDE: ${EX_JSON}"
 
