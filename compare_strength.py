@@ -497,13 +497,17 @@ def main():
     plt.close()
     log(f"wrote PNG: {out_png}")
 
-    # --- 追加: トレイルCSVに追記 ---
-    _append_trails(df, "usd")
-    _append_trails(df, "btc")
+    # ✅ CSV追記
+    trail_csv_usd = _append_trails(df, "usd")
+    trail_csv_btc = _append_trails(df, "btc")
     
-    # --- 追加: 強弱バーPNGも生成（ファイル名は固定）---
-    _save_strength_bar(df, "usd", Path("largecap_strength.png"))
-    _save_strength_bar(df, "btc", Path("largecap_strength_btc.png"))
+    # ✅ バーグラフ保存
+    bar_usd_png = _save_strength_bar(df, "usd", Path("largecap_strength.png"))
+    bar_btc_png = _save_strength_bar(df, "btc", Path("largecap_strength_btc.png"))
+    
+    print("[TRAILS] appended:", trail_csv_usd, trail_csv_btc)
+    print("[BARS] wrote:", bar_usd_png, bar_btc_png)
+
 
 
     show = df.sort_values(["btc_score","usd_score"], ascending=False)[["symbol","usd_score","btc_score","quadrant"]]
@@ -552,6 +556,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
