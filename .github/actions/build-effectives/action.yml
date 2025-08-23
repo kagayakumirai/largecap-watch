@@ -3,7 +3,7 @@ description: Inject exclude list and write *.effective.yaml for largecap configs
 inputs:
   env-file:
     description: Path to .env file
-    default: .github/workflows/largecap-watch.env
+    default: .github/workflows/largecap_watch.env
   map-file:
     description: Path to symbol->id map yaml
     default: configs/symbol_to_id.yaml
