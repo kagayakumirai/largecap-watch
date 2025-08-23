@@ -497,19 +497,6 @@ def main():
     plt.close()
     log(f"wrote PNG: {out_png}")
 
-    # ✅ CSV追記
-    trail_csv_usd = _append_trails(df, "usd")
-    trail_csv_btc = _append_trails(df, "btc")
-    
-    # ✅ バーグラフ保存
-    bar_usd_png = _save_strength_bar(df, "usd", Path("largecap_strength.png"))
-    bar_btc_png = _save_strength_bar(df, "btc", Path("largecap_strength_btc.png"))
-    
-    print("[TRAILS] appended:", trail_csv_usd, trail_csv_btc)
-    print("[BARS] wrote:", bar_usd_png, bar_btc_png)
-
-
-
     show = df.sort_values(["btc_score","usd_score"], ascending=False)[["symbol","usd_score","btc_score","quadrant"]]
     print(show.to_string(index=False))
     print("[DONE]")
@@ -522,15 +509,24 @@ def main():
 
     # 追記：トレイルCSVに追記（UTCタイムスタンプ）
     def _append_trails(df: pd.DataFrame, side: str, data_dir: Path = Path("data")) -> Path:
+        side = side.lower()
+        score_col = {"usd": "usd_score", "btc": "btc_score"}[side]  # KeyErrorで早期に気付ける
         data_dir.mkdir(exist_ok=True)
+    
         out = data_dir / f"score_trails_{side}.csv"
-        now = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+        write_header = not out.exists()
+    
+        now = dt.datetime.now(dt.timezone.utc).isoformat()
         rows = [
-            {"ts": now, "side": side, "symbol": r["symbol"], "score": float(r[f"{side}_score"])}
+            {"ts": now, "side": side, "symbol": r["symbol"], "score": float(r[score_col])}
             for _, r in df.iterrows()
         ]
-        pd.DataFrame(rows).to_csv(out, mode="a", header=not out.exists(), index=False)
+    
+        pd.DataFrame(rows).to_csv(
+            out, mode="a", header=write_header, index=False, line_terminator="\n"
+        )
         return out
+
     # 追記：強弱バーを保存（USD / BTC）
     def _save_strength_bar(df: pd.DataFrame, side: str, out_path: Path) -> Path:
         import matplotlib.pyplot as plt
@@ -556,6 +552,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
