@@ -62,7 +62,7 @@ jobs:
                    config_largecap_compare.yaml config_largecap_compare_scheduler.yaml
           do
             [ -f "$f" ] || continue
-            yq -i '.exclude_ids = (env(LARGECAP_EXCLUDE) | fromjson? // [])' "$f"
+            yq -i '.exclude_ids = (try (env(LARGECAP_EXCLUDE) | fromjson) catch [])' "$f"            
             echo "[OK] updated $f"
           done
 
