@@ -15,8 +15,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from zoneinfo import ZoneInfo
-
 JST = ZoneInfo("Asia/Tokyo")
+
+def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Path:
+    """data/score_trails_<side>.csv に追記し、古い行を掃除する"""
+    ts = dt.datetime.now(JST).isoformat(timespec="seconds")  # JSTで記録
+    cur = df_now[["symbol", "score"]].copy()
+    cur.insert(0, "ts", ts)
+    cur.insert(1, "side", side)
+
+    out = Path("data") / f"score_trails_{side}.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    header = not out.exists()
+    cur.to_csv(out, index=False, mode="a", header=header)
+
+    # 掃除（任意・失敗は無視）
+    try:
+        hist = pd.read_csv(out)
+        hist["ts"] = pd.to_datetime(hist["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
+        cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=hours_keep + 6)
+        hist = hist[hist["ts"] >= cutoff]
+        hist.sort_values(["ts", "symbol"], inplace=True)
+        hist.drop_duplicates(["ts", "symbol"], keep="last", inplace=True)
+        hist.to_csv(out, index=False)
+    except Exception:
+        pass
+
+    return out
 
 # ------------------------------------------------------------
 # utils / HTTP
@@ -60,35 +85,6 @@ def _get_json_with_retries(url, params, *, timeout=30, attempts=4):
 # ------------------------------------------------------------
 TRAILS_DIR = Path("data")
 TRAILS_DIR.mkdir(parents=True, exist_ok=True)
-
-def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Path:
-    """
-    トレイルを UTC タイムスタンプで追記し、古い行を掃除。
-    df_now は columns: [symbol, score] を想定
-    """
-    now_utc = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-    cur = df_now[["symbol", "score"]].copy()
-    cur.insert(0, "ts", now_utc)     # tz-aware(UTC) 文字列
-    cur.insert(1, "side", side)
-
-    out = TRAILS_DIR / f"score_trails_{side}.csv"
-    write_header = not out.exists()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    cur.to_csv(out, index=False, mode="a", header=write_header)
-
-    # 掃除（JST基準で168h+α）
-    try:
-        hist = pd.read_csv(out)
-        hist["ts"] = pd.to_datetime(hist["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
-        cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=hours_keep + 6)
-        hist = hist[hist["ts"] >= cutoff]
-        hist.sort_values(["ts", "symbol"], inplace=True)
-        hist.drop_duplicates(["ts", "symbol"], keep="last", inplace=True)
-        hist.to_csv(out, index=False)
-    except Exception:
-        pass
-
-    return out
 
 def load_trails(side: str, hours: int = 168) -> pd.DataFrame:
     p = TRAILS_DIR / f"score_trails_{side}.csv"
@@ -401,10 +397,12 @@ def main():
     df["quadrant"] = [label(u, b) for u, b in zip(df["usd_score"], df["btc_score"])]
 
     # ---- Trails 追記 & 描画
-    latest_usd = df[["symbol", "usd_score"]].rename(columns={"usd_score": "score"})
-    latest_btc = df[["symbol", "btc_score"]].rename(columns={"btc_score": "score"})
-    persist_trails("usd", latest_usd)
-    persist_trails("btc", latest_btc)
+    latest_usd = df[["symbol","usd_score"]].rename(columns={"usd_score": "score"})
+    latest_btc = df[["symbol","btc_score"]].rename(columns={"btc_score": "score"})
+    trail_csv_usd = persist_trails("usd", latest_usd)
+    trail_csv_btc = persist_trails("btc", latest_btc)
+    print("[TRAILS] appended:", trail_csv_usd, trail_csv_btc)
+    
 
     plot_trails("usd", topn=20, fname="score_trails_usd.png")
     plot_trails("btc", topn=20, fname="score_trails_btc.png")
@@ -505,3 +503,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
