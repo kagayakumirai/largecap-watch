@@ -47,35 +47,25 @@ jobs:
           if [ ! -f "$ENV_FILE" ]; then
             echo "::error::env file not found: $ENV_FILE"; exit 1
           fi
-
-          # コメント/空行と DISCORD_WEBHOOK 行を除外して注入
+      
+          # .env からコメント/空行と DISCORD_WEBHOOK 行を除外して注入
           sed -e 's/\r$//' "$ENV_FILE" \
             | grep -Ev '^[[:space:]]*($|#)|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV"
-
+      
           # secrets で確実に上書き（空上書き防止）
           echo "DISCORD_WEBHOOK=${{ secrets.DISCORD_WEBHOOK }}" >> "$GITHUB_ENV"
-
-          # LARGECAP_EXCLUDE を JSON として検証→壊れていれば []
-          EX_JSON="$(
-            python - <<'PY'
-            import os, json, sys
-            ex = os.environ.get('LARGECAP_EXCLUDE', '[]')
-            try: json.loads(ex)
-            except Exception: ex = '[]'
-            sys.stdout.write(ex)
-            PY
-          )"
-          echo "[LOG] exclude = ${EX_JSON}"
-          export EX_JSON
-
-          # yq で config*.yaml の exclude_ids を一括上書き
+      
+          echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
+      
+          # exclude_ids を一括更新（LARGECAP_EXCLUDE が壊れてても [] にフォールバック）
           for f in config_largecap.yaml config_largecap_btc.yaml \
                    config_largecap_compare.yaml config_largecap_compare_scheduler.yaml
           do
             [ -f "$f" ] || continue
-            yq -i '.exclude_ids = (env(EX_JSON) | fromjson)' "$f"
+            yq -i '.exclude_ids = (env(LARGECAP_EXCLUDE) | fromjson? // [])' "$f"
             echo "[OK] updated $f"
           done
+
 
       - name: Run compare (15m)
         shell: bash
