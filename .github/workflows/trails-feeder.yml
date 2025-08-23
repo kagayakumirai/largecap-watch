@@ -137,3 +137,40 @@ jobs:
           # 2) 比較実行（中で data/score_trails_usd|btc.csv に追記される）
           python compare_strength.py --config config_largecap_compare.yaml
 
+      - name: Send 3 charts to Discord (15m)
+        if: ${{ env.DISCORD_WEBHOOK != '' }}      # Webhook が設定されている時だけ
+        shell: bash
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+      
+          # どの階層に出ても拾えるよう再帰グロブで探す
+          usd=(**/largecap_usd_vs_btc.png)
+          t1=(**/score_trails_usd.png)
+          t2=(**/score_trails_btc.png)
+      
+          : "${usd:?missing usd_vs_btc.png}"
+          : "${t1:?missing score_trails_usd.png}"
+          : "${t2:?missing score_trails_btc.png}"
+      
+          ls -lh "${usd[0]}" "${t1[0]}" "${t2[0]}"
+      
+          msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
+          payload=$(printf '{"content":"%s"}' "$msg")
+      
+          code=$(
+            curl -sS -f -X POST -w '%{http_code}' -o /tmp/resp.txt \
+              -F "payload_json=$payload" \
+              -F "file1=@${usd[0]};type=image/png" \
+              -F "file2=@${t1[0]};type=image/png" \
+              -F "file3=@${t2[0]};type=image/png" \
+              "$DISCORD_WEBHOOK" || true
+          )
+          if [ "${code:-000}" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "Discord webhook failed (HTTP $code):"
+            sed -n '1,200p' /tmp/resp.txt || true
+            exit 1
+          fi
+          echo "Sent charts to Discord (HTTP $code)"
