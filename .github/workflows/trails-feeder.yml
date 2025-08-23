@@ -90,7 +90,7 @@ jobs:
                 data["exclude_ids"] = ex  # 3) 正しく上書き
                 p.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
                 print("[OK] updated", f)
-            PY
+          PY
 
 
       - name: Run compare (15m)
