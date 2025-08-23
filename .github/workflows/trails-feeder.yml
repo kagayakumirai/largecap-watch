@@ -116,22 +116,33 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s globstar nullglob
-          usd=(**/largecap_usd_vs_btc.png)
-          t1=(**/score_trails_usd.png)
-          t2=(**/score_trails_btc.png)
-          : "${usd:?missing usd_vs_btc.png}"
-          : "${t1:?missing score_trails_usd.png}"
-          : "${t2:?missing score_trails_btc.png}"
-          # 念のためトリム（CR/外側クォート）
-          W=$(printf '%s' "${WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//')
+      
+          # パターンにマッチする中で「更新時刻が最新」の1件を返す
+          pick_newest() { ls -t -- **/"$1" 2>/dev/null | head -1; }
+      
+          usd=$(pick_newest 'largecap_usd_vs_btc.png') || { echo 'missing usd_vs_btc.png'; exit 1; }
+          t1=$(pick_newest 'score_trails_usd.png')     || { echo 'missing score_trails_usd.png'; exit 1; }
+          t2=$(pick_newest 'score_trails_btc.png')     || { echo 'missing score_trails_btc.png'; exit 1; }
+      
+          # どのファイルを使うか一応表示（デバッグ用）
+          stat -c '%y %n' "$usd" "$t1" "$t2" || true
+      
+          # 念のため Webhook をトリム（CR/前後空白/外側クォート）
+          W=$(printf '%s' "${WEBHOOK}" \
+              | tr -d '\r' \
+              | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+                    -e "s/^'//;s/'$//" -e 's/^\"//;s/\"$//' )
+      
           msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
           payload=$(printf '{"content":"%s"}' "$msg")
+      
           curl -sS -f -X POST \
             -F "payload_json=$payload" \
-            -F "file1=@${usd[0]};type=image/png" \
-            -F "file2=@${t1[0]};type=image/png" \
-            -F "file3=@${t2[0]};type=image/png" \
+            -F "file1=@${usd};type=image/png" \
+            -F "file2=@${t1};type=image/png" \
+            -F "file3=@${t2};type=image/png" \
             "$W"
+
 
 
       - name: Debug webhook
