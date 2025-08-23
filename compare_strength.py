@@ -12,9 +12,11 @@ import matplotlib.dates as mdates
 from datetime import datetime, timezone, timedelta
 import numpy as np
 from zoneinfo import ZoneInfo
+JST = ZoneInfo("Asia/Tokyo")
 import datetime as dt
 import json
 import time, random
+
 
 def _get_json_with_retries(url, params, *, timeout=30, attempts=4):
     """
@@ -495,6 +497,15 @@ def main():
     plt.close()
     log(f"wrote PNG: {out_png}")
 
+    # --- 追加: トレイルCSVに追記 ---
+    _append_trails(df, "usd")
+    _append_trails(df, "btc")
+    
+    # --- 追加: 強弱バーPNGも生成（ファイル名は固定）---
+    _save_strength_bar(df, "usd", Path("largecap_strength.png"))
+    _save_strength_bar(df, "btc", Path("largecap_strength_btc.png"))
+
+
     show = df.sort_values(["btc_score","usd_score"], ascending=False)[["symbol","usd_score","btc_score","quadrant"]]
     print(show.to_string(index=False))
     print("[DONE]")
@@ -505,8 +516,43 @@ def main():
         print(f"guard_min={guard_min} kept:",
               ((df["usd_score"]>=guard_min)&(df["btc_score"]>=guard_min)).sum())
 
+    # 追記：トレイルCSVに追記（UTCタイムスタンプ）
+    def _append_trails(df: pd.DataFrame, side: str, data_dir: Path = Path("data")) -> Path:
+        data_dir.mkdir(exist_ok=True)
+        out = data_dir / f"score_trails_{side}.csv"
+        now = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+        rows = [
+            {"ts": now, "side": side, "symbol": r["symbol"], "score": float(r[f"{side}_score"])}
+            for _, r in df.iterrows()
+        ]
+        pd.DataFrame(rows).to_csv(out, mode="a", header=not out.exists(), index=False)
+        return out
+    # 追記：強弱バーを保存（USD / BTC）
+    def _save_strength_bar(df: pd.DataFrame, side: str, out_path: Path) -> Path:
+        import matplotlib.pyplot as plt
+        col = f"{side}_score"
+        s = df.sort_values(col, ascending=False)[["symbol", col]]
+    
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.bar(range(len(s)), s[col].to_numpy())
+        ax.set_xticks(range(len(s)))
+        ax.set_xticklabels(s["symbol"].tolist(), rotation=45, ha="right")
+        ax.set_ylabel("Score (z)")
+        ax.set_title(
+            f"Large-Cap Relative Strength ({side.upper()}-quoted) — "
+            f"{dt.datetime.now(JST):%Y-%m-%d %H:%M JST}"
+        )
+        fig.tight_layout()
+        out_path = Path(out_path)
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return out_path
+
+
+
 if __name__ == "__main__":
     main()
+
 
 
 
