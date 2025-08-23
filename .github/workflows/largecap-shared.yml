@@ -10,7 +10,7 @@ on:
         type: string
         default: '3.11'
     secrets:
-      DISCORD_WEBHOOK:
+      DISCORD_WEBHOOK_URL:
         required: false
 
 jobs:
