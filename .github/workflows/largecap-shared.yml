@@ -24,9 +24,10 @@ jobs:
         with: { python-version: '3.11', cache: 'pip' }
 
       - name: Install yq
+        shell: bash
         run: |
+          set -euo pipefail
           curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
-        # shellcheck disable=SC2148
           chmod +x /usr/local/bin/yq
           /usr/local/bin/yq --version
 
