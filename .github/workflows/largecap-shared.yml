@@ -18,7 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
+    env:
+      MPLBACKEND: Agg           # ← これをJobに入れておくと安心
+      
     steps:
       # 1) リポジトリ取得
       - uses: actions/checkout@v4
@@ -77,6 +79,7 @@ jobs:
       # 10) Discord 送信
       - name: Send charts to Discord
         if: ${{ inputs.send_discord }}  # ← secrets を if から外す
+        continue-on-error: true     # ← ネットワーク/HTTPエラーでも落とさない
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         shell: bash
