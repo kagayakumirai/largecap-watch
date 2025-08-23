@@ -165,6 +165,29 @@ jobs:
           print("[DBG] still present euro-coin?:", "euro-coin" in ids)
           PY
 
+      - name: Sanity check excludes (daily)
+        run: |
+          python - <<'PY'
+          import yaml, sys
+          from compare_strength import resolve_universe
+      
+          for p in (
+            "config_largecap.effective.yaml",
+            "config_largecap_btc.effective.yaml",
+            "config_largecap_compare.effective.yaml",
+          ):
+              cfg = yaml.safe_load(open(p,encoding="utf-8")) or {}
+              ids = set(resolve_universe(cfg))
+              ex  = set(cfg.get("exclude_ids", []))
+              print(f"[CFG] {p}: exclude_ids={len(ex)}, resolved={len(ids)}")
+              overlap = ids & ex
+              print("  overlap with excludes:", sorted(list(overlap))[:20])
+              if overlap:
+                  print("::error :: excluded still present:", ",".join(sorted(overlap)))
+                  sys.exit(1)
+          PY
+
+
 
       - name: Run compare & send to Discord (simple, once a day)
         env:
