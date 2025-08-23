@@ -59,9 +59,9 @@ TRAILS_DIR.mkdir(parents=True, exist_ok=True)
 def _now_jst_iso() -> str:
     return dt.datetime.now(JST).isoformat(timespec="seconds")
 
-  DATA_DIR = Path("data")
-  DATA_DIR.mkdir(exist_ok=True)
-  UNIVERSE_CACHE = DATA_DIR / "universe_cache.json"
+DATA_DIR = Path("data")
+DATA_DIR.mkdir(exist_ok=True)
+UNIVERSE_CACHE = DATA_DIR / "universe_cache.json"
 
 
 # ---------- trails ----------
@@ -507,6 +507,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
