@@ -17,6 +17,7 @@ jobs:
     env:
       MPLBACKEND: 'Agg'
       LARGECAP_EXCLUDE: '[]'   # ← 未設定でも [] が入る
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}   # ← これを追加
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +38,12 @@ jobs:
         run: |
           set -euo pipefail
           pip install -q pyyaml   # ←これを最初に追加
-          
+
+          sed -e 's/\r$//' .github/workflows/largecap-watch.env \ 
+          | grep -Ev '^[[:space:]]*#|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV"
+          # 念のため再注入（保険）
+          echo "DISCORD_WEBHOOK=${{ secrets.DISCORD_WEBHOOK }}" >> "$GITHUB_ENV"
+    
           # .env があれば読み込む（無ければスキップ）
           set -a
           source .github/workflows/largecap-watch.env || true
