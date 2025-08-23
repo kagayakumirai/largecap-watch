@@ -47,9 +47,8 @@ jobs:
       
           # .env → GITHUB_ENV（コメント/空行と DISCORD_WEBHOOK を除外）
           sed -e 's/\r$//' "$ENV_FILE" \
-            | grep -Ev '^[[:space:]]*($|#)|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV"
-          # Secret を再注入（空上書き防止）
-          echo "DISCORD_WEBHOOK=${{ secrets.DISCORD_WEBHOOK }}" >> "$GITHUB_ENV"
+            | grep -Ev '^[[:space:]]*($|#)|^(DISCORD_WEBHOOK|WEBHOOK)=' >> "$GITHUB_ENV"
+
       
           echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
       
@@ -112,7 +111,7 @@ jobs:
 
 
       - name: Send 3 charts to Discord (15m)
-        if: ${{ env.WEBHOOK }}  
+        if: ${{ env.WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
@@ -123,6 +122,8 @@ jobs:
           : "${usd:?missing usd_vs_btc.png}"
           : "${t1:?missing score_trails_usd.png}"
           : "${t2:?missing score_trails_btc.png}"
+          # 念のためトリム（CR/外側クォート）
+          W=$(printf '%s' "${WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//')
           msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
           payload=$(printf '{"content":"%s"}' "$msg")
           curl -sS -f -X POST \
@@ -130,7 +131,8 @@ jobs:
             -F "file1=@${usd[0]};type=image/png" \
             -F "file2=@${t1[0]};type=image/png" \
             -F "file3=@${t2[0]};type=image/png" \
-            "$DISCORD_WEBHOOK"
+            "$W"
+
 
       - name: Debug webhook
         run: |
