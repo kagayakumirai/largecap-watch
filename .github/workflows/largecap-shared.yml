@@ -16,6 +16,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 25        # ← ここに置く（全呼び出しに適用）
     permissions:
       contents: write
     env:
