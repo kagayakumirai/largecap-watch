@@ -101,7 +101,7 @@ jobs:
         if: ${{ inputs.send_discord }}  # ← secrets を if から外す
         continue-on-error: true     # ← ネットワーク/HTTPエラーでも落とさない
         env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         shell: bash
         run: |
           set -euo pipefail
