@@ -1,48 +1,10 @@
-name: Build effective configs
-description: Inject exclude list and write *.effective.yaml for largecap configs
-
-inputs:
-  env-file:
-    description: Path to .env file
-    default: .github/workflows/largecap-watch.env
-  map-file:
-    description: Path to symbol->id map yaml
-    default: configs/symbol_to_id.yaml
-  configs:
-    description: Space-separated config list
-    default: "config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml"
-
-runs:
-  using: composite
-  steps:
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: pip
-
-    - name: Install minimal deps for build-effectives
-      shell: bash
-      run: |
-        set -euo pipefail
-        python -m pip install -U pip
-        pip install pyyaml
-
-    - name: Load .env into GITHUB_ENV (sans comments/webhook)
-      shell: bash
-      run: |
-        set -euo pipefail
-        sed -e 's/\r$//' "${{ inputs['env-file'] }}" \
-          | grep -Ev '^[[:space:]]*($|#)|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV" || true
-        echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
-
-    - name: Build *.effective.yaml with excludes injected
-      shell: bash
+    - shell: bash
       run: |
         set -euo pipefail
         python - <<'PY'
-        import os, json, yaml, pathlib
+        import os, json, yaml, pathlib, sys
 
-        # 1) env → list（壊れてたら []）
+        # .env から
         env_ex = os.environ.get("LARGECAP_EXCLUDE", "[]")
         try:
             ex_list = json.loads(env_ex)
@@ -51,8 +13,10 @@ runs:
         if not isinstance(ex_list, list):
             ex_list = []
 
-        # 2) symbol→id のマップを読む
-        map_path = pathlib.Path("${{ inputs['map-file'] }}")
+        # 入力パス（改行や空白が混じっても壊れないように三重引用符で受ける）
+        map_path = pathlib.Path(r"""${{ inputs.map-file }}""")
+        cfg_files = r"""${{ inputs.configs }}""".split()
+
         mp = yaml.safe_load(map_path.read_text(encoding="utf-8")) if map_path.exists() else {}
 
         def sym_to_ids(sym):
@@ -61,8 +25,6 @@ runs:
 
         ex_ids = sorted({str(x) for s in ex_list for x in sym_to_ids(s) if x})
 
-        # 3) 各 config にマージして *.effective.yaml へ
-        cfg_files = "${{ inputs.configs }}".split()
         for base in cfg_files:
             p = pathlib.Path(base)
             if not p.exists():
