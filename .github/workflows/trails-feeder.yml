@@ -98,6 +98,26 @@ jobs:
           set -euo pipefail
           python compare_strength.py --config config_largecap_compare.yaml
 
+      - name: Run USD strength (15m)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python largecap_strength.py --config config_largecap.yaml
+          stamp=$(TZ=Asia/Tokyo date +'%Y%m%d_%H%M')
+          cp -f largecap_strength.png "largecap_strength_${stamp}.png"
+
+      - name: Run BTC strength (15m)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 連続叩きの 429 回避に少し待つ（任意）
+          sleep 8
+          python largecap_strength_btc.py --config config_largecap_btc.yaml
+          stamp=$(TZ=Asia/Tokyo date +'%Y%m%d_%H%M')
+          cp -f largecap_strength_btc.png "largecap_strength_btc_${stamp}.png"
+
+
+
       - name: List artifacts (debug)
         if: ${{ env.DEBUG == '1' || failure() }}
         shell: bash
@@ -110,38 +130,38 @@ jobs:
           done
 
 
-      - name: Send 3 charts to Discord (15m)
+      - name: Send 5 charts to Discord (15m)
         if: ${{ env.WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
           shopt -s globstar nullglob
       
-          # パターンにマッチする中で「更新時刻が最新」の1件を返す
+          # “一番新しい”ファイルを拾う関数
           pick_newest() { ls -t -- **/"$1" 2>/dev/null | head -1; }
       
-          usd=$(pick_newest 'largecap_usd_vs_btc.png') || { echo 'missing usd_vs_btc.png'; exit 1; }
-          t1=$(pick_newest 'score_trails_usd.png')     || { echo 'missing score_trails_usd.png'; exit 1; }
-          t2=$(pick_newest 'score_trails_btc.png')     || { echo 'missing score_trails_btc.png'; exit 1; }
+          usd=$(pick_newest 'largecap_usd_vs_btc.png')         || { echo 'missing usd_vs_btc.png'; exit 1; }
+          t1=$(pick_newest 'score_trails_usd.png')             || { echo 'missing score_trails_usd.png'; exit 1; }
+          t2=$(pick_newest 'score_trails_btc.png')             || { echo 'missing score_trails_btc.png'; exit 1; }
+          s1=$(pick_newest 'largecap_strength_*.png')          || s1=$(pick_newest 'largecap_strength.png' || true)
+          s2=$(pick_newest 'largecap_strength_btc_*.png')      || s2=$(pick_newest 'largecap_strength_btc.png' || true)
       
-          # どのファイルを使うか一応表示（デバッグ用）
-          stat -c '%y %n' "$usd" "$t1" "$t2" || true
-      
-          # 念のため Webhook をトリム（CR/前後空白/外側クォート）
-          W=$(printf '%s' "${WEBHOOK}" \
-              | tr -d '\r' \
-              | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
-                    -e "s/^'//;s/'$//" -e 's/^\"//;s/\"$//' )
+          # Webhook を念のためトリム
+          W=$(printf '%s' "${WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s/^'//;s/'$//" -e 's/^\"//;s/\"$//' )
       
           msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
           payload=$(printf '{"content":"%s"}' "$msg")
       
+          # 強弱PNGは存在するときだけ添付（-F を柔軟に組み立て）
           curl -sS -f -X POST \
             -F "payload_json=$payload" \
             -F "file1=@${usd};type=image/png" \
             -F "file2=@${t1};type=image/png" \
             -F "file3=@${t2};type=image/png" \
+            ${s1:+-F "file4=@${s1};type=image/png"} \
+            ${s2:+-F "file5=@${s2};type=image/png"} \
             "$W"
+
 
 
 
