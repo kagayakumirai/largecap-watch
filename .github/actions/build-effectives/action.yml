@@ -17,26 +17,8 @@ inputs:
       config_largecap.yaml
       config_largecap_btc.yaml
       config_largecap_compare.yaml
-      
-- name: Sanity check excludes (15m)
-  run: |
-    python - <<'PY'
-    import yaml
-    from compare_strength import resolve_universe
-
-    for p in ("config_largecap.effective.yaml",
-              "config_largecap_btc.effective.yaml"):
-        cfg = yaml.safe_load(open(p, encoding="utf-8"))
-        ids = set(resolve_universe(cfg))
-        ex  = set(cfg.get("exclude_ids", []))
-        overlap = ids & ex
-        print(f"[CFG] {p}  resolved={len(ids)}  exclude_ids={len(ex)}  overlap={len(overlap)}")
-        if overlap:
-            print("  overlap sample:", list(sorted(overlap))[:10])
-    PY
-
-
-runs:
+  
+  runs:
   using: composite
   steps:
     - name: Setup Python
