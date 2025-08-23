@@ -17,7 +17,8 @@ jobs:
   run:
     # ここはそのままでOK（同一リポは ref 指定不要）
     uses: ./.github/workflows/largecap-shared.yml
-    secrets: inherit
+    secrets:
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
     with:
       # 送信ON/OFF（shared 側 inputs に合わせる）
       send_discord: true
