@@ -110,18 +110,19 @@ jobs:
             [ -e "$f" ] && ls -lh "$f"
           done
 
+
       - name: Send 3 charts to Discord (15m)
+        if: ${{ secrets.DISCORD_WEBHOOK != '' }}
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${DISCORD_WEBHOOK:-}" ]; then
-            echo "::notice::DISCORD_WEBHOOK is empty; skip sending."; exit 0
-          fi
           shopt -s globstar nullglob
           usd=(**/largecap_usd_vs_btc.png)
           t1=(**/score_trails_usd.png)
           t2=(**/score_trails_btc.png)
-          : "${usd:?missing largecap_usd_vs_btc.png}"
+          : "${usd:?missing usd_vs_btc.png}"
           : "${t1:?missing score_trails_usd.png}"
           : "${t2:?missing score_trails_btc.png}"
           msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
@@ -133,6 +134,9 @@ jobs:
             -F "file3=@${t2[0]};type=image/png" \
             "$DISCORD_WEBHOOK"
 
+
+
+          
       - name: Commit & push trails
         shell: bash
         run: |
