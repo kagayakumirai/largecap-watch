@@ -63,7 +63,9 @@ runs:
 
         ex_ids = sorted({str(x) for s in ex_list for x in sym_to_ids(s) if x})
 
-        cfg_files = "${{ inputs.configs }}".split()
+        # 改行を含む入力を安全に受け取って空白で分割
+        cfg_raw = """${{ inputs.configs }}"""
+        cfg_files = cfg_raw.split()   # 改行・スペースをまとめて分割
         for base in cfg_files:
             p = pathlib.Path(base)
             if not p.exists():
