@@ -81,32 +81,41 @@ jobs:
               print("[OK] updated", f)
           PY
           
+      - name: List artifacts (debug)
+        run: |
+          pwd
+          ls -1a
+
       - name: Commit & push trails
         run: |
           set -euo pipefail
-          shopt -s nullglob  # ← グロブが0件でも空配列にする（pathspecエラー防止）
+          shopt -s nullglob  # グロブ0件→空配列に（pathspec防止）
       
-          files=(largecap_usd_vs_btc.png score_trails_*.png data/score_trails_*.csv largecap_compare.csv)
+          # 生成物を収集（存在するものだけ）
+          files=()
+          [ -f largecap_usd_vs_btc.png ] && files+=("largecap_usd_vs_btc.png")
+          for f in score_trails_*.png data/score_trails_*.csv largecap_compare.csv; do
+            [ -e "$f" ] && files+=("$f")
+          done
       
+          # 何もなければ正常終了
           if ((${#files[@]} == 0)); then
-            echo "No trail artifacts to commit"; exit 0
+            echo "No artifacts to commit"; exit 0
           fi
+      
+          echo "Will commit: ${files[*]}"
       
           git config user.name  github-actions
           git config user.email github-actions@github.com
-      
           git add "${files[@]}"
       
-          # 余計なyamlを誤ってステージしていたら外す（任意）
-          git restore --staged *.yaml || true
-      
-          # 変更が無ければコミットしない
           if git diff --cached --quiet; then
             echo "Nothing to commit"; exit 0
           fi
       
           git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')"
           git push
+
 
 
 
