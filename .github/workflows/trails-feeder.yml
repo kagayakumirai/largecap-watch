@@ -68,15 +68,15 @@ jobs:
           sys.stdout.write(json.dumps(arr))
           PY
 
-    # 2) 4つの config の exclude_ids を一括上書き
-    for f in config_largecap.yaml config_largecap_btc.yaml \
-             config_largecap_compare.yaml config_largecap_compare_scheduler.yaml
-    do
-      [ -f "$f" ] || continue
-      # JSONリテラルをそのまま RHS に埋め込む
-      yq -i ".exclude_ids = $(cat /tmp/exclude.json)" "$f"
-      echo "[OK] updated $f"
-    done
+          # 2) 4つの config の exclude_ids を一括上書き
+          for f in config_largecap.yaml config_largecap_btc.yaml \
+                   config_largecap_compare.yaml config_largecap_compare_scheduler.yaml
+          do
+            [ -f "$f" ] || continue
+            # JSONリテラルをそのまま RHS に埋め込む
+            yq -i ".exclude_ids = $(cat /tmp/exclude.json)" "$f"
+            echo "[OK] updated $f"
+          done
 
 
       - name: Run compare (15m)
