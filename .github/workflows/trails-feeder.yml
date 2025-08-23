@@ -38,7 +38,6 @@ jobs:
           sudo curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
 
-      # Pythonで確実に上書き（崩れていても自己修復）
       - name: Load env & inject excludes
         shell: bash
         run: |
@@ -49,48 +48,49 @@ jobs:
           # .env → GITHUB_ENV（コメント/空行と DISCORD_WEBHOOK を除外）
           sed -e 's/\r$//' "$ENV_FILE" \
             | grep -Ev '^[[:space:]]*($|#)|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV"
-          # secrets で確実に上書き（空上書き防止）
+          # Secret を再注入（空上書き防止）
           echo "DISCORD_WEBHOOK=${{ secrets.DISCORD_WEBHOOK }}" >> "$GITHUB_ENV"
       
           echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
       
-          # exclude_ids を“必ず”正しい配列で上書き。崩れたYAMLは自動修復してから保存。
-          python - <<'PY'
-import os, json, re, sys, yaml, io, pathlib
-# 1) env から配列を作る（壊れていれば []）
-try:
-    ex = json.loads(os.environ.get("LARGECAP_EXCLUDE","[]") or "[]")
-    if not isinstance(ex, list):
-        ex = []
-except Exception:
-    ex = []
-            
-files = [
-    "config_largecap.yaml",
-    "config_largecap_btc.yaml",
-    "config_largecap_compare.yaml",
-    "config_largecap_compare_scheduler.yaml",
-]
-            
-for f in files:
-    p = pathlib.Path(f)
-    if not p.exists():
-         continue
-    txt = p.read_text(encoding="utf-8")
-            
-    # 2) ありがちな崩れを修復：exclude_ids: の直後に先頭列の [] が来ているケース
-    fixed = re.sub(r'(?m)^exclude_ids:\s*\n\[\]\s*(?=\n|$)', 'exclude_ids: []', txt)
-            
-    try:
-        data = yaml.safe_load(fixed) or {}
-    except yaml.YAMLError as e:
-        print(f"[ERR] cannot parse {f}: {e}", file=sys.stderr)
-        continue
-            
-    data["exclude_ids"] = ex  # 3) 正しく上書き
-    p.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    print("[OK] updated", f)
-PY
+          # ←← ここから「cat >> 一時ファイル」方式（YAMLのインデントに左右されない）
+          cat > /tmp/update_excludes.py <<'PY'
+          import os, json, re, yaml, pathlib
+      
+          # env → 配列（壊れていれば []）
+          try:
+              ex = json.loads(os.environ.get("LARGECAP_EXCLUDE", "[]") or "[]")
+              if not isinstance(ex, list):
+                  ex = []
+          except Exception:
+              ex = []
+          
+          files = [
+              "config_largecap.yaml",
+              "config_largecap_btc.yaml",
+              "config_largecap_compare.yaml",
+              "config_largecap_compare_scheduler.yaml",
+          ]
+          
+          for f in files:
+              p = pathlib.Path(f)
+              if not p.exists():
+                  continue
+              txt = p.read_text(encoding="utf-8")
+              # 「exclude_ids:\n[]」の崩れを補正
+              txt = re.sub(r'(?m)^exclude_ids:\s*\n\[\]\s*(?=\n|$)', 'exclude_ids: []', txt)
+          
+              data = yaml.safe_load(txt) or {}
+              data["exclude_ids"] = ex
+              p.write_text(
+                  yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+                  encoding="utf-8"
+              )
+              print("[OK] updated", f)
+          PY
+          
+              python /tmp/update_excludes.py
+
 
 
       - name: Run compare (15m)
