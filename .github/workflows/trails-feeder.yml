@@ -32,22 +32,27 @@ jobs:
           chmod +x /usr/local/bin/yq
 
 
-
       - name: Load env & inject excludes
         shell: bash
         run: |
           set -euo pipefail
-          pip install -q pyyaml   # ←これを最初に追加
-
-          sed -e 's/\r$//' .github/workflows/largecap-watch.env \ 
-          | grep -Ev '^[[:space:]]*#|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV"
-          # 念のため再注入（保険）
+          ENV_FILE="${GITHUB_WORKSPACE}/.github/workflows/largecap-watch.env"
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "::error::env file not found: $ENV_FILE"
+            exit 1
+          fi
+      
+          # .env からコメント/空行と DISCORD_WEBHOOK 行を除外して取り込み
+          sed -e 's/\r$//' "$ENV_FILE" \
+            | grep -Ev '^[[:space:]]*($|#)|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV"
+      
+          # secrets を再注入（.env に空行があっても上書き防止）
           echo "DISCORD_WEBHOOK=${{ secrets.DISCORD_WEBHOOK }}" >> "$GITHUB_ENV"
-    
-          # .env があれば読み込む（無ければスキップ）
-          set -a
-          source .github/workflows/largecap-watch.env || true
-          set +a
+      
+          # デバッグ表示（任意）
+          echo "LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
+
+
       
           # 1) LARGECAP_EXCLUDE を JSON として検証（壊れてたら []）
           EX_JSON="$(
