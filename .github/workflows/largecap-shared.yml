@@ -106,8 +106,8 @@ jobs:
         run: |
           set -euo pipefail
           # 空ならここで安全にスキップ
-          if [ -z "${DISCORD_WEBHOOK:-}" ]; then
-            echo "::notice::DISCORD_WEBHOOK is empty; skip sending."
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "::notice::DISCORD_WEBHOOK_URL is empty; skip sending."
             exit 0
           fi
 
