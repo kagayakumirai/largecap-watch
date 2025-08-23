@@ -36,29 +36,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ENV_FILE="${GITHUB_WORKSPACE}/.github/workflows/largecap-watch.env"
-          [ -f "$ENV_FILE" ] || { echo "::error::env file not found: $ENV_FILE"; exit 1; }
-
-          # .env → GITHUB_ENV（CRLF削除 & コメント/空行除外, かつ DISCORD_WEBHOOK 行は除外）
-          sed -e 's/\r$//' "$ENV_FILE" \
-            | grep -Ev '^[[:space:]]*(#|$)|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV"
-
           echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
-
-          # JSONとして妥当化（壊れていたら []）
-          EX_JSON="$(
-          python - <<'PY'
-          import os, json, sys
-          ex = os.environ.get('LARGECAP_EXCLUDE','[]')
-          try: json.loads(ex)
-          except Exception: ex = '[]'
-          sys.stdout.write(ex)
-          PY
-          )"
-          export EX_JSON
-
-          # symbol→id マップ（一部のみ・必要に応じ追加）
-          cat >/tmp/symbol_to_id.yaml <<'YAML'
+      
+          # --- symbol -> id マップを作成（必ず終端行のみ 'MAP'）---
+          cat >/tmp/s2i.yaml <<'MAP'
           USDE: ethena-usde
           WETH: weth
           WEETH: wrapped-eeth
@@ -85,29 +66,38 @@ jobs:
           USDS:
             - sperax-usd
             - usds
-          YAML
-
-          # effective生成（exclude_idsへ反映）
+          MAP
+      
+          # --- yq フィルタもファイル化（クォート崩れ対策）---
+          cat >/tmp/patch.yq <<'YQ'
+            .exclude_symbols = (.exclude_symbols // [])
+                               + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson)
+            |
+            .exclude_ids = (.exclude_ids // [])
+                           + (
+                              (env(LARGECAP_EXCLUDE) // "[]") | fromjson
+                              | map( ( . as $s | (load("/tmp/s2i.yaml")[$s] // "") ) )
+                              | flatten
+                              | map(select(. != ""))
+                              | unique
+                             )
+            | .exclude = .exclude_ids
+          YQ
+      
           for base in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml; do
             [ -f "$base" ] || { echo "skip $base"; continue; }
             out="${base%.yaml}.effective.yaml"
             echo "making $out from $base"
-
-            /usr/local/bin/yq '
-              .exclude_symbols = (.exclude_symbols // [])
-                                 + ((env(EX_JSON) // "[]") | fromjson)
-              |
-              .exclude_ids = (.exclude_ids // [])
-                             + (
-                                 (env(EX_JSON) // "[]") | fromjson
-                                 | map( ( . as $s | (load("/tmp/symbol_to_id.yaml")[$s] // "") ) )
-                                 | flatten | map(select(. != "")) | unique
-                               )
-              |
-              .exclude = .exclude_ids
-            ' "$base" > "$out"
-
-            echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out"
+            if ! /usr/local/bin/yq -o=yaml -f /tmp/patch.yq "$base" > "$out"; then
+              echo "::error::yq failed on $base"
+              echo "[DBG] yq version: $(/usr/local/bin/yq --version)"
+              echo "[DBG] showing inputs:"
+              sed -n '1,120p' "$base" || true
+              echo "[DBG] symbol map:"
+              sed -n '1,120p' /tmp/s2i.yaml || true
+              exit 1
+            fi
+            echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out" || true
           done
 
       - name: Install deps
