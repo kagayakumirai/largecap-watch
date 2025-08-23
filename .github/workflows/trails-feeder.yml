@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   run:
-    timeout-minutes: 25      # ← 念のための保険
     # ここはそのままでOK（同一リポは ref 指定不要）
     uses: ./.github/workflows/largecap-shared.yml
     secrets: inherit
