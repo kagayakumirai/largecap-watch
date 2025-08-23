@@ -1,0 +1,57 @@
+name: Build effective configs
+description: Inject exclude list and write *.effective.yaml for largecap configs
+inputs:
+  env-file:
+    description: Path to .env file
+    default: .github/workflows/largecap-watch.env
+  map-file:
+    description: Path to symbol->id map yaml
+    default: configs/symbol_to_id.yaml
+  configs:
+    description: Space-separated config list
+    default: "config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        sed -e 's/\r$//' "${{ inputs.env-file }}" \
+          | grep -Ev '^[[:space:]]*($|#)|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV" || true
+        echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
+
+    - shell: bash
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        import os, json, yaml, pathlib, sys
+        env_ex = os.environ.get("LARGECAP_EXCLUDE", "[]")
+        try: ex_list = json.loads(env_ex)
+        except Exception: ex_list = []
+        if not isinstance(ex_list, list): ex_list = []
+
+        map_path = pathlib.Path("${{ inputs.map-file }}")
+        mp = yaml.safe_load(map_path.read_text(encoding="utf-8")) if map_path.exists() else {}
+
+        def sym_to_ids(sym):
+            v = mp.get(str(sym).upper(), sym)
+            return v if isinstance(v, list) else [v]
+
+        ex_ids = sorted({str(x) for s in ex_list for x in sym_to_ids(s) if x})
+
+        cfg_files = "${{ inputs.configs }}".split()
+        for base in cfg_files:
+            p = pathlib.Path(base)
+            if not p.exists():
+                print(f"[skip] {base}"); continue
+            data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+            cur = data.get("exclude_ids") or []
+            cur = [str(x) for x in (cur if isinstance(cur, list) else [cur]) if x]
+            merged = sorted({*cur, *ex_ids})
+            data["exclude_ids"] = merged
+            data["exclude"] = merged
+            out = p.with_suffix(".effective.yaml")
+            out.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+            print(f"[OK] wrote {out} exclude_ids={len(merged)}")
+        PY
