@@ -5,181 +5,115 @@ on:
     inputs:
       send_discord:
         type: boolean
-        required: false
         default: true
-      python-version:          # ← 呼び出し元から渡せるように
+      python-version:
         type: string
         default: '3.11'
     secrets:
       DISCORD_WEBHOOK:
         required: false
+
 jobs:
   run:
     runs-on: ubuntu-latest
-    permissions: { contents: write }
+    permissions:
+      contents: write
 
     steps:
-      - name: Checkout (full)
-        uses: actions/checkout@v4
-        with: { fetch-depth: 0 }     # fast-forward失敗対策
+      # 1) リポジトリ取得
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      # 2) Python 準備
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python-version }}
           cache: pip
 
+      # 3) yq（念のため）
       - name: Install yq
-        shell: bash
         run: |
-          set -euo pipefail
           curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
           /usr/local/bin/yq --version
 
-      # ===== .env 読み込み＆除外リスト注入 =====
-      - name: Load env & inject excludes
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
-      
-          # --- symbol -> id マップを作成（必ず終端行のみ 'MAP'）---
-          cat >/tmp/s2i.yaml <<'MAP'
-          USDE: ethena-usde
-          WETH: weth
-          WEETH: wrapped-eeth
-          WBETH: wrapped-beacon-eth
-          WSTETH: wrapped-steth
-          STETH: staked-ether
-          USDT: tether
-          USDC: usd-coin
-          BUSD: binance-usd
-          DAI: dai
-          FDUSD: first-digital-usd
-          PYUSD: paypal-usd
-          EURC: euro-coin
-          FRAX: frax
-          USDD: usdd
-          LEO: leo-token
-          CBBTC: coinbase-wrapped-btc
-          SUSDE: ethena-staked-usde
-          UNISTETH: unistake
-          WBT:
-            - wrapped-bitcoin
-            - whitebit
-          BSC-USD: binance-bridged-usdt-bnb-smart-chain
-          USDS:
-            - sperax-usd
-            - usds
-          MAP
-      
-          # --- yq フィルタもファイル化（クォート崩れ対策）---
-          cat >/tmp/patch.yq <<'YQ'
-            .exclude_symbols = (.exclude_symbols // [])
-                               + ((env(LARGECAP_EXCLUDE) // "[]") | fromjson)
-            |
-            .exclude_ids = (.exclude_ids // [])
-                           + (
-                              (env(LARGECAP_EXCLUDE) // "[]") | fromjson
-                              | map( ( . as $s | (load("/tmp/s2i.yaml")[$s] // "") ) )
-                              | flatten
-                              | map(select(. != ""))
-                              | unique
-                             )
-            | .exclude = .exclude_ids
-          YQ
-      
-          for base in config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml; do
-            [ -f "$base" ] || { echo "skip $base"; continue; }
-            out="${base%.yaml}.effective.yaml"
-            echo "making $out from $base"
-            if ! /usr/local/bin/yq -o=yaml -f /tmp/patch.yq "$base" > "$out"; then
-              echo "::error::yq failed on $base"
-              echo "[DBG] yq version: $(/usr/local/bin/yq --version)"
-              echo "[DBG] showing inputs:"
-              sed -n '1,120p' "$base" || true
-              echo "[DBG] symbol map:"
-              sed -n '1,120p' /tmp/s2i.yaml || true
-              exit 1
-            fi
-            echo -n "$out => exclude_ids: "; /usr/local/bin/yq '.exclude_ids' "$out" || true
-          done
+      # 4) 除外リストを注入して *.effective.yaml を生成（← ここが“アクションの呼び出し”）
+      #    事前に .github/actions/build-effectives/action.yml を置いてある前提
+      - name: Build effective configs (inject excludes)
+        uses: ./.github/actions/build-effectives
+        with:
+          env_file: .github/workflows/largecap-watch.env
+          bases: |
+            config_largecap.yaml
+            config_largecap_btc.yaml
+            config_largecap_compare.yaml
 
+      # 5) 依存
       - name: Install deps
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
 
-      # ===== 比較（USD×BTC） =====
-      - name: Run compare
-        run: python compare_strength.py --config config_largecap_compare.effective.yaml
-
-      # ===== 強弱ランキング（任意） =====
-      - name: Run USD strength
-        if: ${{ inputs.run_strength }}
-        run: python largecap_strength.py --config config_largecap.effective.yaml
-
-      - name: Run BTC strength
-        if: ${{ inputs.run_strength }}
+      # 6) 強弱（USD）
+      - name: Run USD strength (15m)
         run: |
-          sleep 8  # 429回避
+          python largecap_strength.py --config config_largecap.effective.yaml
+
+      # 7) 429回避
+      - name: Pause to avoid 429
+        run: sleep 8
+
+      # 8) 強弱（BTC建て）
+      - name: Run BTC strength (15m)
+        run: |
           python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
 
-      # ===== Discordへ送信（任意） =====
-      - name: Send charts to Discord
-        if: ${{ inputs.send_discord && env.DISCORD_WEBHOOK != '' }}
+      # 9) USD×BTC 比較（トレイルも内部で更新される想定）
+      - name: Run compare
+        run: |
+          python compare_strength.py --config config_largecap_compare.effective.yaml
+
+      # 10) Discord 送信（任意）
+      - name: Send 3 charts to Discord (15m)
+        if: ${{ inputs.send_discord && secrets.DISCORD_WEBHOOK != '' }}
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
-          # 念のためCRや外側クォートを除去
-          W=$(printf '%s' "${DISCORD_WEBHOOK}" | tr -d '\r' \
-               | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
-                     -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//' )
-          # …curl 送信処理…
-
-
-          # 送る候補
-          cmp=(**/largecap_usd_vs_btc.png)
-          tr1=(**/score_trails_usd.png **/score_trails_usd_*.png)
-          tr2=(**/score_trails_btc.png **/score_trails_btc_*.png)
-          s_usd=(**/largecap_strength.png **/largecap_strength_*.png)
-          s_btc=(**/largecap_strength_btc.png **/largecap_strength_btc_*.png)
-
-          # ファイル優先順位（同名があれば日時付きを優先）
-          pick() { for f in "$@"; do [ -f "$f" ] && { echo "$f"; return; }; done; }
-
-          png1=$(pick "${cmp[@]}")    || true
-          png2=$(pick "${tr1[@]}")    || true
-          png3=$(pick "${tr2[@]}")    || true
-          png4=$(pick "${s_usd[@]}")  || true
-          png5=$(pick "${s_btc[@]}")  || true
-
-          # payload
-          msg="LargeCap ${ { inputs.interval_label } } — $(date -u +'%Y-%m-%d %H:%M UTC')"
+          shopt -s globstar nullglob
+          usd=(**/largecap_usd_vs_btc.png)
+          t1=(**/score_trails_usd.png)
+          t2=(**/score_trails_btc.png)
+          : "${usd:?missing usd_vs_btc.png}"
+          : "${t1:?missing score_trails_usd.png}"
+          : "${t2:?missing score_trails_btc.png}"
+          W=$(printf '%s' "${DISCORD_WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//')
+          msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
           payload=$(printf '{"content":"%s"}' "$msg")
-
-          # 何も無ければスキップ
-          [ -n "${png1}${png2}${png3}${png4}${png5}" ] || { echo "no images; skip"; exit 0; }
-
-          # 最高5枚まで添付（順番固定）
           curl -sS -f -X POST \
             -F "payload_json=$payload" \
-            ${png1:+-F "file1=@${png1};type=image/png"} \
-            ${png2:+-F "file2=@${png2};type=image/png"} \
-            ${png3:+-F "file3=@${png3};type=image/png"} \
-            ${png4:+-F "file4=@${png4};type=image/png"} \
-            ${png5:+-F "file5=@${png5};type=image/png"} \
+            -F "file1=@${usd[0]};type=image/png" \
+            -F "file2=@${t1[0]};type=image/png" \
+            -F "file3=@${t2[0]};type=image/png" \
             "$W"
 
-      # ===== 生成物をコミット（任意） =====
+      # 11) 生成物をコミット
       - name: Commit & push artifacts
-        if: ${{ inputs.push_changes }}
+        shell: bash
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Update artifacts (${{ inputs.interval_label }})" || exit 0
+          set -euo pipefail
+          shopt -s nullglob
+          files=()
+          for f in largecap_*.png largecap_*.csv score_trails_*.png data/score_trails_*.csv; do
+            [[ -e "$f" ]] && files+=("$f")
+          done
+          (( ${#files[@]} )) || { echo "No artifacts to commit"; exit 0; }
+          echo "Will commit: ${files[*]}"
+          git config user.name  github-actions
+          git config user.email github-actions@github.com
+          git add -- "${files[@]}"
+          git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')" || exit 0
           git pull --rebase
           git push
