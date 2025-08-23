@@ -134,36 +134,67 @@ jobs:
           for f in **/largecap_usd_vs_btc.png **/score_trails_*.png **/largecap_compare.csv **/data/score_trails_*.csv; do
             [ -e "$f" ] && ls -lh "$f"
           done
-
-
+      
       - name: Send 5 charts to Discord (15m)
         if: ${{ env.WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s globstar nullglob
+          shopt -s nullglob globstar
       
-          pick_newest() { ls -t -- **/"$1" 2>/dev/null | head -1; }
+          # 1) webhook を念のためトリム
+          W=$(printf '%s' "${WEBHOOK}" | tr -d '\r' \
+              | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+                    -e "s/^['\"]//" -e "s/['\"]$//")
       
-          usd=$(pick_newest 'largecap_usd_vs_btc.png')         || { echo 'missing usd_vs_btc.png'; exit 1; }
-          t1=$(pick_newest 'score_trails_usd.png')             || { echo 'missing score_trails_usd.png'; exit 1; }
-          t2=$(pick_newest 'score_trails_btc.png')             || { echo 'missing score_trails_btc.png'; exit 1; }
+          # 2) ファイルを“明示”で探す（最新版優先）
+          quad=$(ls -t **/largecap_usd_vs_btc*.png 2>/dev/null | head -1 || true)
+          trails_usd=$(ls -t **/score_trails_usd*.png 2>/dev/null | head -1 || true)
+          trails_btc=$(ls -t **/score_trails_btc*.png 2>/dev/null | head -1 || true)
+          # USD の強弱は古い命名（largecap_strength.png）と将来の命名（largecap_strength_usd*.png）の両方を許容
+          strength_usd=$(ls -t **/largecap_strength.png **/largecap_strength_usd*.png 2>/dev/null | head -1 || true)
+          strength_btc=$(ls -t **/largecap_strength_btc*.png 2>/dev/null | head -1 || true)
       
-          s1=$(pick_newest 'largecap_strength_usd_*.png') || s1=$(pick_newest 'largecap_strength.png' || true)
-          s2=$(pick_newest 'largecap_strength_btc_*.png') || s2=$(pick_newest 'largecap_strength_btc.png' || true)
+          echo "quad=$quad"
+          echo "trails_usd=$trails_usd"
+          echo "trails_btc=$trails_btc"
+          echo "strength_usd=$strength_usd"
+          echo "strength_btc=$strength_btc"
       
-          W=$(printf '%s' "${WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s/^'//;s/'$//" -e 's/^\"//;s/\"$//' )
+          files=()
+          [[ -f "$quad"         ]] && files+=("$quad")
+          [[ -f "$trails_usd"   ]] && files+=("$trails_usd")
+          [[ -f "$trails_btc"   ]] && files+=("$trails_btc")
+          [[ -f "$strength_usd" ]] && files+=("$strength_usd")
+          [[ -f "$strength_btc" ]] && files+=("$strength_btc")
+      
+          # 3) 内容ハッシュで重複排除（BTC画像の二重送信を防止）
+          declare -A H=()
+          uniq=()
+          for f in "${files[@]}"; do
+            h=$(sha1sum "$f" | awk '{print $1}')
+            if [[ -z "${H[$h]+x}" ]]; then
+              uniq+=("$f"); H[$h]=1
+            else
+              echo "dup: $f (skip)"
+            fi
+          done
+      
+          (( ${#uniq[@]} )) || { echo "::warning::No charts to send"; exit 0; }
+      
+          # 4) 送信
           msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
           payload=$(printf '{"content":"%s"}' "$msg")
       
-          curl -sS -f -X POST \
-            -F "payload_json=$payload" \
-            -F "file1=@${usd};type=image/png" \
-            -F "file2=@${t1};type=image/png" \
-            -F "file3=@${t2};type=image/png" \
-            ${s1:+-F "file4=@${s1};type=image/png"} \
-            ${s2:+-F "file5=@${s2};type=image/png"} \
-            "$W"
+          FORM=()
+          for i in "${!uniq[@]}"; do
+            n=$((i+1))
+            FORM+=("-F" "file${n}=@${uniq[$i]};type=image/png")
+          done
+      
+          curl -sS -f -X POST -F "payload_json=$payload" "${FORM[@]}" "$W"
+
+
 
 
 
