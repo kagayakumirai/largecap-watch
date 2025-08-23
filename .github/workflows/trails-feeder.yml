@@ -127,6 +127,7 @@ jobs:
           pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
 
       - name: Update trails + run compare (15m)
+        shell: bash     # ← これを追加
         run: |
           set -euo pipefail
           # 1) .env を読み込む（除外/件数をdailyと同じに）
