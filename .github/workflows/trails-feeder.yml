@@ -106,6 +106,9 @@ jobs:
           stamp=$(TZ=Asia/Tokyo date +'%Y%m%d_%H%M')
           cp -f largecap_strength.png "largecap_strength_usd_${stamp}.png"
 
+      - name: Pause to avoid 429
+        run: |
+          sleep $(( 15 + RANDOM % 30 ))
 
       - name: Run BTC strength (15m)
         shell: bash
