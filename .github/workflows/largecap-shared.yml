@@ -74,14 +74,20 @@ jobs:
         run: |
           python compare_strength.py --config config_largecap_compare.effective.yaml
 
-      # 10) Discord 送信（任意）
-      - name: Send 3 charts to Discord (15m)
-        if: ${{ inputs.send_discord && secrets.DISCORD_WEBHOOK != '' }}
+      # 10) Discord 送信
+      - name: Send charts to Discord
+        if: ${{ inputs.send_discord }}  # ← secrets を if から外す
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
+          # 空ならここで安全にスキップ
+          if [ -z "${DISCORD_WEBHOOK:-}" ]; then
+            echo "::notice::DISCORD_WEBHOOK is empty; skip sending."
+            exit 0
+          fi
+
           shopt -s globstar nullglob
           usd=(**/largecap_usd_vs_btc.png)
           t1=(**/score_trails_usd.png)
@@ -89,9 +95,12 @@ jobs:
           : "${usd:?missing usd_vs_btc.png}"
           : "${t1:?missing score_trails_usd.png}"
           : "${t2:?missing score_trails_btc.png}"
-          W=$(printf '%s' "${DISCORD_WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//')
+
+          # 念のため整形
+          W=$(printf '%s' "${DISCORD_WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
           msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
           payload=$(printf '{"content":"%s"}' "$msg")
+
           curl -sS -f -X POST \
             -F "payload_json=$payload" \
             -F "file1=@${usd[0]};type=image/png" \
