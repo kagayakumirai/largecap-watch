@@ -56,41 +56,41 @@ jobs:
       
           # exclude_ids を“必ず”正しい配列で上書き。崩れたYAMLは自動修復してから保存。
           python - <<'PY'
-            import os, json, re, sys, yaml, io, pathlib
+import os, json, re, sys, yaml, io, pathlib
+# 1) env から配列を作る（壊れていれば []）
+try:
+    ex = json.loads(os.environ.get("LARGECAP_EXCLUDE","[]") or "[]")
+    if not isinstance(ex, list):
+        ex = []
+except Exception:
+    ex = []
             
-            # 1) env から配列を作る（壊れていれば []）
-            try:
-                ex = json.loads(os.environ.get("LARGECAP_EXCLUDE","[]") or "[]")
-                if not isinstance(ex, list): ex = []
-            except Exception:
-                ex = []
+files = [
+    "config_largecap.yaml",
+    "config_largecap_btc.yaml",
+    "config_largecap_compare.yaml",
+    "config_largecap_compare_scheduler.yaml",
+]
             
-            files = [
-                "config_largecap.yaml",
-                "config_largecap_btc.yaml",
-                "config_largecap_compare.yaml",
-                "config_largecap_compare_scheduler.yaml",
-            ]
+for f in files:
+    p = pathlib.Path(f)
+    if not p.exists():
+         continue
+    txt = p.read_text(encoding="utf-8")
             
-            for f in files:
-                p = pathlib.Path(f)
-                if not p.exists():
-                    continue
-                txt = p.read_text(encoding="utf-8")
+    # 2) ありがちな崩れを修復：exclude_ids: の直後に先頭列の [] が来ているケース
+    fixed = re.sub(r'(?m)^exclude_ids:\s*\n\[\]\s*(?=\n|$)', 'exclude_ids: []', txt)
             
-                # 2) ありがちな崩れを修復：exclude_ids: の直後に先頭列の [] が来ているケース
-                fixed = re.sub(r'(?m)^exclude_ids:\s*\n\[\]\s*(?=\n|$)', 'exclude_ids: []', txt)
+    try:
+        data = yaml.safe_load(fixed) or {}
+    except yaml.YAMLError as e:
+        print(f"[ERR] cannot parse {f}: {e}", file=sys.stderr)
+        continue
             
-                try:
-                    data = yaml.safe_load(fixed) or {}
-                except yaml.YAMLError as e:
-                    print(f"[ERR] cannot parse {f}: {e}", file=sys.stderr)
-                    continue
-            
-                data["exclude_ids"] = ex  # 3) 正しく上書き
-                p.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-                print("[OK] updated", f)
-          PY
+    data["exclude_ids"] = ex  # 3) 正しく上書き
+    p.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    print("[OK] updated", f)
+PY
 
 
       - name: Run compare (15m)
