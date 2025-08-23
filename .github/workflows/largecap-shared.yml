@@ -43,8 +43,8 @@ jobs:
       - name: Build effective configs (inject excludes)
         uses: ./.github/actions/build-effectives
         with:
-          env_file: .github/workflows/largecap-watch.env
-          bases: |
+          env-file: .github/workflows/largecap-watch.env
+          configs: |
             config_largecap.yaml
             config_largecap_btc.yaml
             config_largecap_compare.yaml
