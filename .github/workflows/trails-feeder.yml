@@ -104,7 +104,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python largecap_strength.py --config config_largecap.effective.yaml
+          python largecap_strength.py --config config_largecap.yaml
           stamp=$(TZ=Asia/Tokyo date +'%Y%m%d_%H%M')
           cp -f largecap_strength.png "largecap_strength_usd_${stamp}.png"
 
@@ -118,7 +118,7 @@ jobs:
           set -euo pipefail
           # 連続叩きの 429 回避に少し待つ（任意）
           sleep 8
-          python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
+          python largecap_strength_btc.py --config config_largecap_btc.yaml
           stamp=$(TZ=Asia/Tokyo date +'%Y%m%d_%H%M')
           cp -f largecap_strength_btc.png "largecap_strength_btc_${stamp}.png"
 
