@@ -16,8 +16,9 @@ jobs:
       contents: write
     env:
       MPLBACKEND: 'Agg'
-      LARGECAP_EXCLUDE: '[]'   # ← 未設定でも [] が入る
-      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}   # ← これを追加
+      LARGECAP_EXCLUDE: '[]'                       # 未設定でも [] に
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -26,138 +27,85 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      # compare_strength.py は PyYAML / pandas / matplotlib / requests 等が必要
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -U pyyaml requests pandas numpy matplotlib
+
       - name: Install yq
         run: |
-          curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
-          chmod +x /usr/local/bin/yq
+          sudo curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
 
-
+      # .env → GITHUB_ENV（Webhook は除外し、最後に secrets で上書き）
       - name: Load env & inject excludes
         shell: bash
         run: |
           set -euo pipefail
           ENV_FILE="${GITHUB_WORKSPACE}/.github/workflows/largecap-watch.env"
           if [ ! -f "$ENV_FILE" ]; then
-            echo "::error::env file not found: $ENV_FILE"
-            exit 1
+            echo "::error::env file not found: $ENV_FILE"; exit 1
           fi
-      
-          # .env からコメント/空行と DISCORD_WEBHOOK 行を除外して取り込み
+
+          # コメント/空行と DISCORD_WEBHOOK 行を除外して注入
           sed -e 's/\r$//' "$ENV_FILE" \
             | grep -Ev '^[[:space:]]*($|#)|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV"
-      
-          # secrets を再注入（.env に空行があっても上書き防止）
+
+          # secrets で確実に上書き（空上書き防止）
           echo "DISCORD_WEBHOOK=${{ secrets.DISCORD_WEBHOOK }}" >> "$GITHUB_ENV"
-      
-          # デバッグ表示（任意）
-          echo "LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
 
-
-      
-          # 1) LARGECAP_EXCLUDE を JSON として検証（壊れてたら []）
+          # LARGECAP_EXCLUDE を JSON として検証→壊れていれば []
           EX_JSON="$(
-          python - <<'PY'
-          import os, json, sys
-          ex = os.environ.get('LARGECAP_EXCLUDE', '[]')
-          try:
-                json.loads(ex)
-          except Exception:
-                ex = '[]'
-          sys.stdout.write(ex)
-          PY
+            python - <<'PY'
+            import os, json, sys
+            ex = os.environ.get('LARGECAP_EXCLUDE', '[]')
+            try: json.loads(ex)
+            except Exception: ex = '[]'
+            sys.stdout.write(ex)
+            PY
           )"
           echo "[LOG] exclude = ${EX_JSON}"
+          export EX_JSON
 
-          # 2) YAML を Python で安全に更新
-          python - <<'PY'
-          import os, json, yaml, io
-          ex = json.loads(os.environ.get("EX_JSON", "[]"))
-          
-          files = [
-              "config_largecap.yaml",
-              "config_largecap_btc.yaml",
-              "config_largecap_compare.yaml",
-              "config_largecap_compare_scheduler.yaml",
-          ]
-          
-          for f in files:
-              if not os.path.exists(f):
-                  continue
-              with open(f, "r", encoding="utf-8") as fp:
-                  data = yaml.safe_load(fp) or {}
-              data["exclude_ids"] = ex
-              with open(f, "w", encoding="utf-8") as fp:
-                  yaml.safe_dump(data, fp, allow_unicode=True, sort_keys=False)
-              print("[OK] updated", f)
-          PY
-          
-      - name: List artifacts (debug)
-        run: |
-          pwd
-          ls -1a
+          # yq で config*.yaml の exclude_ids を一括上書き
+          for f in config_largecap.yaml config_largecap_btc.yaml \
+                   config_largecap_compare.yaml config_largecap_compare_scheduler.yaml
+          do
+            [ -f "$f" ] || continue
+            yq -i '.exclude_ids = (env(EX_JSON) | fromjson)' "$f"
+            echo "[OK] updated $f"
+          done
 
-      - name: Commit & push trails
+      - name: Run compare (15m)
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob  # グロブ0件→空配列に
-      
-          # 生成物を収集（存在するものだけ）
-          declare -a files=()
-          [[ -f largecap_usd_vs_btc.png ]] && files+=("largecap_usd_vs_btc.png")
-          for f in score_trails_*.png data/score_trails_*.csv largecap_compare.csv; do
-            [[ -e "$f" ]] && files+=("$f")
-          done
-      
-          # 何も無ければ正常終了
-          (( ${#files[@]} )) || { echo "No artifacts to commit"; exit 0; }
-      
-          echo "Will commit: ${files[*]}"
-      
-          git config user.name  github-actions
-          git config user.email github-actions@github.com
-          git add -- "${files[@]}"
-      
-          if git diff --cached --quiet; then
-            echo "Nothing to commit"; exit 0
-          fi
-          git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')"
-          git push
+          python compare_strength.py --config config_largecap_compare.yaml
 
-
-      
-      - name: Install deps
-        run: |
-          python -m pip install -U pip
-          pip install -r requirements.txt || pip install -U pandas matplotlib pyyaml requests
-
-      - name: Update trails + run compare (15m)
-        shell: bash     # ← これを追加
+      - name: List artifacts (debug)
+        if: ${{ env.DEBUG == '1' || failure() }}
+        shell: bash
         run: |
           set -euo pipefail
-          # 1) .env を読み込む（除外/件数をdailyと同じに）
-          sed -e 's/\r$//' .github/workflows/largecap-watch.env \
-            | grep -Ev '^[[:space:]]*#' >> "$GITHUB_ENV"
-          echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
-      
-          # 2) 比較実行（中で data/score_trails_usd|btc.csv に追記される）
-          python compare_strength.py --config config_largecap_compare.yaml
+          echo "PWD=$(pwd)"
+          shopt -s globstar nullglob
+          for f in **/largecap_usd_vs_btc.png **/score_trails_*.png **/largecap_compare.csv **/data/score_trails_*.csv; do
+            [ -e "$f" ] && ls -lh "$f"
+          done
 
       - name: Send 3 charts to Discord (15m)
         shell: bash
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           set -euo pipefail
           if [ -z "${DISCORD_WEBHOOK:-}" ]; then
-            echo "::notice::DISCORD_WEBHOOK is empty; skip sending."
-            exit 0
+            echo "::notice::DISCORD_WEBHOOK is empty; skip sending."; exit 0
           fi
           shopt -s globstar nullglob
           usd=(**/largecap_usd_vs_btc.png)
           t1=(**/score_trails_usd.png)
           t2=(**/score_trails_btc.png)
-          : "${usd:?missing usd_vs_btc.png}"
+          : "${usd:?missing largecap_usd_vs_btc.png}"
           : "${t1:?missing score_trails_usd.png}"
           : "${t2:?missing score_trails_btc.png}"
           msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
@@ -168,3 +116,19 @@ jobs:
             -F "file2=@${t1[0]};type=image/png" \
             -F "file3=@${t2[0]};type=image/png" \
             "$DISCORD_WEBHOOK"
+
+      - name: Commit & push trails
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          files=(**/largecap_usd_vs_btc.png **/score_trails_*.png **/largecap_compare.csv **/data/score_trails_*.csv)
+          (( ${#files[@]} )) || { echo "No artifacts to commit"; exit 0; }
+          git config user.name  github-actions
+          git config user.email github-actions@github.com
+          git add -- "${files[@]}"
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"; exit 0
+          fi
+          git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')"
+          git push
