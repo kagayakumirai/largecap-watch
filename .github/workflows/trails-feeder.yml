@@ -87,6 +87,7 @@ jobs:
           ls -1a
 
       - name: Commit & push trails
+        shell: bash   # ← これを付ける
         run: |
           set -euo pipefail
           shopt -s nullglob  # グロブ0件→空配列に（pathspec防止）
