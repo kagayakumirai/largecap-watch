@@ -9,11 +9,6 @@ concurrency:
   group: largecap-15m
   cancel-in-progress: true
 
-defaults:
-  run:
-    shell: bash
-    working-directory: largecap-watch   # ← リポジトリ直下に合わせて変更可
-
 jobs:
   trails:
     runs-on: ubuntu-latest
