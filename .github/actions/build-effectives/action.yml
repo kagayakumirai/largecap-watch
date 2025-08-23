@@ -11,21 +11,17 @@ inputs:
     required: false
     default: configs/symbol_to_id.yaml
   configs:
-    description: Space-separated (or newline-separated) config list
+    description: Space-separated config list
     required: false
-    default: |
-      config_largecap.yaml
-      config_largecap_btc.yaml
-      config_largecap_compare.yaml
-  
-  runs:
-  using: composite
+    default: "config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml"
+
+runs:
+  using: "composite"
   steps:
-    - name: Setup Python
-      uses: actions/setup-python@v5
+    - uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
-        cache: pip
+        python-version: "3.11"
+        cache: "pip"
 
     - name: Install minimal deps for build-effectives
       shell: bash
@@ -42,14 +38,13 @@ inputs:
           | grep -Ev '^[[:space:]]*($|#)|^DISCORD_WEBHOOK=' >> "$GITHUB_ENV" || true
         echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
 
-    - name: Build .effective YAMLs
+    - name: Build effective YAMLs
       shell: bash
       run: |
         set -euo pipefail
         python - <<'PY'
         import os, json, yaml, pathlib
 
-        # env -> list
         env_ex = os.environ.get("LARGECAP_EXCLUDE","[]")
         try:
             ex_list = json.loads(env_ex)
@@ -58,12 +53,9 @@ inputs:
         if not isinstance(ex_list, list):
             ex_list = []
 
-        map_path = pathlib.Path(r"""${{ inputs.map-file }}""")
-        cfgs     = r"""${{ inputs.configs }}""".split()
-
-        mp = {}
-        if map_path.exists():
-            mp = yaml.safe_load(map_path.read_text(encoding="utf-8")) or {}
+        map_path = pathlib.Path("${{ inputs.map-file }}")
+        mp = yaml.safe_load(map_path.read_text(encoding="utf-8")) if map_path.exists() else {}
+        mp = mp or {}
 
         def sym_to_ids(sym):
             v = mp.get(str(sym).upper(), sym)
@@ -71,7 +63,8 @@ inputs:
 
         ex_ids = sorted({str(x) for s in ex_list for x in sym_to_ids(s) if x})
 
-        for base in cfgs:
+        cfg_files = "${{ inputs.configs }}".split()
+        for base in cfg_files:
             p = pathlib.Path(base)
             if not p.exists():
                 print(f"[skip] {base}")
@@ -79,15 +72,12 @@ inputs:
             data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
             cur = data.get("exclude_ids") or []
             if not isinstance(cur, list):
-                cur = [cur] if cur else []
+                cur = [cur]
             cur = [str(x) for x in cur if x]
             merged = sorted({*cur, *ex_ids})
             data["exclude_ids"] = merged
             data["exclude"] = merged
             out = p.with_suffix(".effective.yaml")
-            out.write_text(
-              yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
-              encoding="utf-8"
-            )
+            out.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
             print(f"[OK] wrote {out} exclude_ids={len(merged)}")
         PY
