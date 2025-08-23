@@ -35,7 +35,7 @@ runs:
       run: |
         set -euo pipefail
         sed -e 's/\r$//' "${{ inputs.env-file }}" \
-          | grep -Ev '^[[:space:]]*($|#)|^DISCORD_WEBHOOK(_URL)?=' >> "$GITHUB_ENV" || true
+          | grep -Ev '^[[:space:]]*($|#)|^[[:space:]]*DISCORD_WEBHOOK(_URL)?=' >> "$GITHUB_ENV" || true
         echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
 
     - name: Build effective YAMLs
