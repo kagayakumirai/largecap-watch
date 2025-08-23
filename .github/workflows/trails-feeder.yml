@@ -21,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # ← rebase/pull に必要
 
       - uses: actions/setup-python@v5
         with:
@@ -177,14 +179,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s globstar nullglob
-          files=(**/largecap_usd_vs_btc.png **/score_trails_*.png **/largecap_compare.csv **/data/score_trails_*.csv)
+          shopt -s nullglob
+      
+          # 生成物収集（あなたのロジックのままでOK）
+          files=()
+          [[ -f largecap_usd_vs_btc.png ]] && files+=("largecap_usd_vs_btc.png")
+          for f in score_trails_*.png data/score_trails_*.csv largecap_compare.csv; do
+            [[ -e "$f" ]] && files+=("$f")
+          done
+      
           (( ${#files[@]} )) || { echo "No artifacts to commit"; exit 0; }
-          git config user.name  github-actions
-          git config user.email github-actions@github.com
+      
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      
+          # リモートを取り込み → rebase → 追加 → commit → push（最大3回リトライ）
+          git fetch origin main
+          git checkout -B main origin/main
+      
           git add -- "${files[@]}"
           if git diff --cached --quiet; then
             echo "Nothing to commit"; exit 0
           fi
           git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')"
-          git push
+      
+          for i in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "Pushed successfully"; exit 0
+            fi
+            echo "Push rejected (non-ff). Retry $i: rebase onto origin/main ..."
+            git fetch origin main
+            git rebase origin/main || { echo "Rebase conflict. Falling back to merge-fastforward attempt"; git reset --hard; git pull --ff-only || true; }
+          done
+      
+          echo "::error::Failed to push after retries"
+          exit 1
+      
