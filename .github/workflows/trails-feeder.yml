@@ -138,10 +138,3 @@ jobs:
           # 2) 比較実行（中で data/score_trails_usd|btc.csv に追記される）
           python compare_strength.py --config config_largecap_compare.yaml
 
-
-
-
-          
-          - if: failure()
-            run: curl -X POST -H 'Content-Type: application/json' \
-            -d '{"content":"⚠️ LargeCap 15m 失敗しました"}' "$DISCORD_WEBHOOK"
