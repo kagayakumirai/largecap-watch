@@ -3,7 +3,7 @@ name: Trails Feeder (15m)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *'   # 15分ごと
+    - cron: '*/60 * * * *'   # 15分ごと
 
 concurrency:
   group: largecap-15m
