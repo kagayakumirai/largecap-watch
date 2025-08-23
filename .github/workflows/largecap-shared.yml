@@ -97,19 +97,16 @@ jobs:
           python compare_strength.py --config config_largecap_compare.effective.yaml
 
       - name: Send charts to Discord
-        if: ${{ inputs.send_discord && (secrets.DISCORD_WEBHOOK_URL != '' || secrets.DISCORD_WEBHOOK != '') }}
+        if: ${{ inputs.send_discord && env.WEBHOOK != '' }}
         continue-on-error: true
         env:
-          # URL があればそれ、無ければ旧名を使う（どちらも無ければ空）
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL != '' && secrets.DISCORD_WEBHOOK_URL || secrets.DISCORD_WEBHOOK }}
+          # 旧名/新名どちらでもOKにするフォールバック
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL || secrets.DISCORD_WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${WEBHOOK:-}" ]; then
-            echo "::notice::WEBHOOK empty; skip sending."; exit 0
-          fi
-      
           shopt -s globstar nullglob
+      
           usd=(**/largecap_usd_vs_btc.png)
           t1=(**/score_trails_usd.png)
           t2=(**/score_trails_btc.png)
@@ -122,7 +119,7 @@ jobs:
           : "${s_usd:?missing largecap_strength.png}"
           : "${s_btc:?missing largecap_strength_btc.png}"
       
-          msg="LargeCap ${GITHUB_WORKFLOW} — $(date -u +'%Y-%m-%d %H:%M UTC')"
+          msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
           payload=$(printf '{"content":"%s"}' "$msg")
       
           curl -sS -f -X POST \
@@ -133,6 +130,7 @@ jobs:
             -F "file4=@${s_usd[0]};type=image/png" \
             -F "file5=@${s_btc[0]};type=image/png" \
             "$WEBHOOK"
+
 
 
       # 11) 生成物をコミット
