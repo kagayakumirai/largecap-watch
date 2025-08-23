@@ -7,6 +7,9 @@ on:
         type: boolean
         required: false
         default: true
+      python-version:          # ← 呼び出し元から渡せるように
+        type: string
+        default: '3.11'
     secrets:
       DISCORD_WEBHOOK:
         required: false
@@ -21,7 +24,9 @@ jobs:
         with: { fetch-depth: 0 }     # fast-forward失敗対策
 
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11', cache: 'pip' }
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
 
       - name: Install yq
         shell: bash
