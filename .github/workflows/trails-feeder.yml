@@ -17,7 +17,7 @@ jobs:
     env:
       MPLBACKEND: 'Agg'
       LARGECAP_EXCLUDE: '[]'                       # 未設定でも [] に
-      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}   # ← ここを統一
 
     steps:
       - uses: actions/checkout@v4
@@ -112,9 +112,7 @@ jobs:
 
 
       - name: Send 3 charts to Discord (15m)
-        if: ${{ env.DISCORD_WEBHOOK != '' }}
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        if: ${{ env.WEBHOOK }}  
         shell: bash
         run: |
           set -euo pipefail
@@ -134,6 +132,9 @@ jobs:
             -F "file3=@${t2[0]};type=image/png" \
             "$DISCORD_WEBHOOK"
 
+      - name: Debug webhook
+        run: |
+          if [ -n "${WEBHOOK:-}" ]; then echo "WEBHOOK: set"; else echo "WEBHOOK: EMPTY"; fi
 
 
           
