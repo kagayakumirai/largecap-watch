@@ -104,7 +104,8 @@ jobs:
           set -euo pipefail
           python largecap_strength.py --config config_largecap.yaml
           stamp=$(TZ=Asia/Tokyo date +'%Y%m%d_%H%M')
-          cp -f largecap_strength.png "largecap_strength_${stamp}.png"
+          cp -f largecap_strength.png "largecap_strength_usd_${stamp}.png"
+
 
       - name: Run BTC strength (15m)
         shell: bash
@@ -137,22 +138,19 @@ jobs:
           set -euo pipefail
           shopt -s globstar nullglob
       
-          # “一番新しい”ファイルを拾う関数
           pick_newest() { ls -t -- **/"$1" 2>/dev/null | head -1; }
       
           usd=$(pick_newest 'largecap_usd_vs_btc.png')         || { echo 'missing usd_vs_btc.png'; exit 1; }
           t1=$(pick_newest 'score_trails_usd.png')             || { echo 'missing score_trails_usd.png'; exit 1; }
           t2=$(pick_newest 'score_trails_btc.png')             || { echo 'missing score_trails_btc.png'; exit 1; }
-          s1=$(pick_newest 'largecap_strength_*.png')          || s1=$(pick_newest 'largecap_strength.png' || true)
-          s2=$(pick_newest 'largecap_strength_btc_*.png')      || s2=$(pick_newest 'largecap_strength_btc.png' || true)
       
-          # Webhook を念のためトリム
+          s1=$(pick_newest 'largecap_strength_usd_*.png') || s1=$(pick_newest 'largecap_strength.png' || true)
+          s2=$(pick_newest 'largecap_strength_btc_*.png') || s2=$(pick_newest 'largecap_strength_btc.png' || true)
+      
           W=$(printf '%s' "${WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s/^'//;s/'$//" -e 's/^\"//;s/\"$//' )
-      
           msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
           payload=$(printf '{"content":"%s"}' "$msg")
       
-          # 強弱PNGは存在するときだけ添付（-F を柔軟に組み立て）
           curl -sS -f -X POST \
             -F "payload_json=$payload" \
             -F "file1=@${usd};type=image/png" \
@@ -161,6 +159,7 @@ jobs:
             ${s1:+-F "file4=@${s1};type=image/png"} \
             ${s2:+-F "file5=@${s2};type=image/png"} \
             "$W"
+
 
 
 
