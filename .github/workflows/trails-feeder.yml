@@ -104,7 +104,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python largecap_strength.py --config config_largecap.yaml
+          python largecap_strength.py --config config_largecap.effective.yaml
           stamp=$(TZ=Asia/Tokyo date +'%Y%m%d_%H%M')
           cp -f largecap_strength.png "largecap_strength_usd_${stamp}.png"
 
@@ -118,7 +118,7 @@ jobs:
           set -euo pipefail
           # 連続叩きの 429 回避に少し待つ（任意）
           sleep 8
-          python largecap_strength_btc.py --config config_largecap_btc.yaml
+          python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
           stamp=$(TZ=Asia/Tokyo date +'%Y%m%d_%H%M')
           cp -f largecap_strength_btc.png "largecap_strength_btc_${stamp}.png"
 
@@ -215,6 +215,10 @@ jobs:
           # 生成物収集（あなたのロジックのままでOK）
           files=()
           [[ -f largecap_usd_vs_btc.png ]] && files+=("largecap_usd_vs_btc.png")
+          # ★ 強弱PNG（USD/BTC）を追加
+          [[ -f largecap_strength.png ]] && files+=("largecap_strength.png")
+          [[ -f largecap_strength_btc.png ]] && files+=("largecap_strength_btc.png")
+
           for f in score_trails_*.png data/score_trails_*.csv largecap_compare.csv; do
             [[ -e "$f" ]] && files+=("$f")
           done
@@ -233,7 +237,10 @@ jobs:
             echo "Nothing to commit"; exit 0
           fi
           git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')"
-      
+          # 衝突回避（fast-forwardできない場合）
+          git pull --rebase --autostash origin main || true
+          git push
+          
           for i in 1 2 3; do
             if git push origin HEAD:main; then
               echo "Pushed successfully"; exit 0
