@@ -17,8 +17,9 @@ jobs:
   run:
     # ここはそのままでOK（同一リポは ref 指定不要）
     uses: ./.github/workflows/largecap-shared.yml
-    # Webhook などの secrets を共有
     secrets: inherit
-    # （任意）共通WFの inputs を渡す
     with:
+      # 送信ON/OFF（shared 側 inputs に合わせる）
       send_discord: true
+      # Python のバージョンを上書きしたい場合（任意）
+      python-version: '3.11'
