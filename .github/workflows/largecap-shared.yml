@@ -3,13 +3,13 @@ name: LargeCap (shared)
 on:
   workflow_call:
     inputs:
-      run_strength:      { type: boolean, default: false }   # 強弱ランキングPNGも作るか
-      send_discord:      { type: boolean, default: true }    # Discord送信
-      push_changes:      { type: boolean, default: true }    # 生成物をcommit/push
-      interval_label:    { type: string,  default: '15m' }   # ログ/コミットメッセージ用
+      send_discord:
+        type: boolean
+        required: false
+        default: true
     secrets:
-      DISCORD_WEBHOOK:   { required: false }
-
+      DISCORD_WEBHOOK:
+        required: false
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -132,17 +132,18 @@ jobs:
 
       # ===== Discordへ送信（任意） =====
       - name: Send charts to Discord
-        if: ${{ inputs.send_discord && secrets.DISCORD_WEBHOOK != '' }}
+        if: ${{ inputs.send_discord && env.DISCORD_WEBHOOK != '' }}
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s globstar nullglob
-          # webhookを念のため整形
+          # 念のためCRや外側クォートを除去
           W=$(printf '%s' "${DISCORD_WEBHOOK}" | tr -d '\r' \
                | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
                      -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//' )
+          # …curl 送信処理…
+
 
           # 送る候補
           cmp=(**/largecap_usd_vs_btc.png)
