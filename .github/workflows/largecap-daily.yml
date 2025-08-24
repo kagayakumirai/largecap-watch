@@ -1,0 +1,123 @@
+name: LargeCap Daily
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"   # 09:00 JST
+
+permissions:
+  contents: write
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      MPLBACKEND: Agg
+    steps:
+      # 1) リポジトリ取得
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2) Python
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # 3) 除外リストを注入（共通アクション）
+      - name: Build effective configs (inject excludes)
+        uses: ./.github/actions/build-effectives
+        with:
+          env-file: .github/workflows/largecap-watch.env
+          configs: |
+            config_largecap.yaml
+            config_largecap_btc.yaml
+            config_largecap_compare.yaml
+
+      # 4) 依存
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
+
+      # 5) 強弱（USD）
+      - name: Run USD strength (daily)
+        run: |
+          python largecap_strength.py --config config_largecap.effective.yaml
+
+      # 6) 429回避
+      - name: Pause to avoid 429
+        run: sleep 10
+
+      # 7) 強弱（BTC）
+      - name: Run BTC strength (daily)
+        run: |
+          python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
+
+      # 8) 比較（デイリー長期トレイルも追記）
+      - name: Run compare (daily; append long-range trails)
+        run: |
+          python compare_strength.py \
+            --config config_largecap_compare.effective.yaml \
+            --trails-file-suffix "_daily" \
+            --trails-keep-hours $((24*365))
+
+      # 9) Discord 送信（5枚＋あれば usdxbtc_daily も）
+      - name: Send charts to Discord (daily)
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "::notice::DISCORD_WEBHOOK_URL is empty; skip."
+            exit 0
+          fi
+          W=$(printf '%s' "${DISCORD_WEBHOOK_URL}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          msg="LargeCap Daily — $(TZ=Asia/Tokyo date +'%Y-%m-%d')"
+          payload=$(printf '{"content":"%s"}' "$msg")
+
+          # 必須5枚
+          : "${F1:=largecap_usd_vs_btc.png}"
+          : "${F2:=score_trails_usd.png}"
+          : "${F3:=score_trails_btc.png}"
+          : "${F4:=largecap_strength.png}"
+          : "${F5:=largecap_strength_btc.png}"
+          for f in "$F1" "$F2" "$F3" "$F4" "$F5"; do [ -f "$f" ] || { echo "missing $f"; exit 1; }; done
+
+          # あれば6枚目（usdxbtc 長期）
+          EXTRA=""
+          if [ -f "score_trails_usdxbtc_daily.png" ]; then
+            EXTRA='-F file6=@score_trails_usdxbtc_daily.png;type=image/png'
+          fi
+
+          curl -sS -f -X POST \
+            -F "payload_json=$payload" \
+            -F "file1=@$F1;type=image/png" \
+            -F "file2=@$F2;type=image/png" \
+            -F "file3=@$F3;type=image/png" \
+            -F "file4=@$F4;type=image/png" \
+            -F "file5=@$F5;type=image/png" \
+            $EXTRA \
+            "$W"
+
+      # 10) 生成物をコミット（CSVも含める）
+      - name: Commit & push artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=()
+          for f in largecap_*.png largecap_*.csv score_trails_*.png data/score_trails_*.csv; do
+            [[ -e "$f" ]] && files+=("$f")
+          done
+          (( ${#files[@]} )) || { echo "No artifacts to commit"; exit 0; }
+          git config user.name  github-actions
+          git config user.email github-actions@github.com
+          git add -- "${files[@]}"
+          git commit -m "Daily snapshot $(date -u +'%Y-%m-%dT%H:%MZ')" || exit 0
+          git pull --rebase
+          git push
