@@ -144,7 +144,7 @@ jobs:
           set -euo pipefail
           mkdir -p data
           for side in usd btc; do
-            bad="data/sore_trails_${side}.csv"
+            bad="data/score_trails_${side}.csv"
             good="data/score_trails_${side}.csv"
             if [ -f "$bad" ]; then
               echo "::warning::Found $bad; merging into $good"
