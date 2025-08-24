@@ -141,44 +141,71 @@ jobs:
           PY
 
 
+      # 直下に出た生成物を data/ に集約（保険）
+      - name: Normalize artifacts into data/
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p data
+          for f in largecap_*.png largecap_*.csv score_trails_*.png score_trails_*.csv; do
+            [[ -e "$f" ]] && mv -f "$f" data/
+          done
+
+
+      # Discord 送信：data/ だけを見る & 鮮度ガード
       - name: Send charts to Discord
         if: ${{ inputs.send_discord && env.WEBHOOK != '' }}
-        continue-on-error: true
         env:
-          # 旧名/新名どちらでもOKにするフォールバック
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL || secrets.DISCORD_WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s globstar nullglob
-
-          usd=(**/largecap_usd_vs_btc.png)
-          t1=(**/score_trails_usd.png)
-          t2=(**/score_trails_btc.png)
-          t3=(**/score_trails_usdxbtc.png)        
-          s_usd=(**/largecap_strength.png)
-          s_btc=(**/largecap_strength_btc.png)
       
-          : "${usd:?missing usd_vs_btc.png}"
-          : "${t1:?missing score_trails_usd.png}"
-          : "${t2:?missing score_trails_btc.png}"
-          : "${t3:?missing score_trails_usdxbtc.png}"        
-          : "${s_usd:?missing largecap_strength.png}"
-          : "${s_btc:?missing largecap_strength_btc.png}"
-    
-       
+          # Webhook を安全化（改行/前後空白除去）
+          WEBHOOK="$(printf '%s' "${WEBHOOK:-}" | tr -d '\r\n' | sed -e 's/^ *//' -e 's/ *$//')"
+          [[ -n "$WEBHOOK" ]] || { echo "ERROR: WEBHOOK empty"; exit 1; }
+          echo "Webhook: ...${WEBHOOK: -6}"
+      
+          # 送るファイルは data/ に固定（** は使わない）
+          files=(
+            data/largecap_usd_vs_btc.png
+            data/score_trails_usd.png
+            data/score_trails_btc.png
+            data/largecap_strength.png
+            data/largecap_strength_btc.png
+            data/score_trails_usdxbtc.png
+          )
+      
+          # 存在と“鮮度”を確認（例：1時間以内更新）
+          now=$(date +%s)
+          max_age=$((60*60))  # 1h
+          for f in "${files[@]}"; do
+            [[ -f "$f" ]] || { echo "ERROR: missing $f"; exit 1; }
+            mtime=$(stat -c %Y "$f")
+            age=$((now - mtime))
+            size=$(stat -c %s "$f")
+            echo "$(printf '%-33s' "$f")  mtime=$(date -u -d "@$mtime" +'%F %T UTC')  size=${size}B  age=${age}s"
+            if (( age > max_age )); then
+              echo "ERROR: $f is older than $((max_age/60)) min → 古い画像は送信しません"; exit 1
+            fi
+          done
+      
+          # メッセージ
           msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
-          payload=$(printf '{"content":"%s"}' "$msg")
+          payload="$(jq -n --arg content "$msg" '{content:$content}')"
       
-          curl -sS -f -X POST \
-            -F "payload_json=$payload" \
-            -F "file1=@${usd[0]};type=image/png" \
-            -F "file2=@${t1[0]};type=image/png" \
-            -F "file3=@${t2[0]};type=image/png" \
-            -F "file4=@${s_usd[0]};type=image/png" \
-            -F "file5=@${s_btc[0]};type=image/png" \
-            -F "file6=@${t3[0]};type=image/png" \
+          # 送信（順番は任意・URLは必ず二重引用符）
+          curl --fail-with-body -sS \
+            -F "payload_json=${payload}" \
+            -F "file1=@${files[0]};type=image/png" \
+            -F "file2=@${files[1]};type=image/png" \
+            -F "file3=@${files[2]};type=image/png" \
+            -F "file4=@${files[3]};type=image/png" \
+            -F "file5=@${files[4]};type=image/png" \
+            -F "file6=@${files[5]};type=image/png" \
             "$WEBHOOK"
+
             
       - name: Inspect trails files (do we have today?)
         shell: bash
@@ -207,44 +234,33 @@ jobs:
           echo "== tail BTC =="
           tail -n 3 data/score_trails_btc.csv || true
 
-      # 迷子の生成物を data/ へ強制移動（保険）
-      - name: Normalize artifacts into data/
+      # 迷子チェック：root に生成物があれば失敗
+      - name: Assert no artifacts outside data/
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
-          mkdir -p data
-      
-          # 直下に転がっていたら data/ へ移動
-          for f in largecap_*.png largecap_*.csv score_trails_*.png score_trails_*.csv; do
-            [[ -e "$f" ]] && mv -f "$f" data/
+          bad=()
+          for pat in "largecap_*.png" "largecap_*.csv" "score_trails_*.png" "score_trails_*.csv"; do
+            mapfile -t found < <(compgen -G "$pat" || true)
+            (( ${#found[@]} )) && bad+=("${found[@]}")
           done
+          if (( ${#bad[@]} )); then
+            echo "ERROR: artifacts must live in data/:"
+            printf '  %s\n' "${bad[@]}"
+            exit 1
+          fi
 
-
-      # 11) 生成物をコミット
+      # 11) 生成物コミット（削除/移動も含めて全部ステージ）
       - name: Commit & push artifacts
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
-      
-          # 直下に出た生成物を data/ に集約（保険）
-          mkdir -p data
-          for f in largecap_*.png largecap_*.csv score_trails_*.png score_trails_*.csv; do
-            [[ -e "$f" ]] && mv -f "$f" data/
-          done
-      
           git config user.name  github-actions
           git config user.email github-actions@github.com
       
-          # ★ ここがポイント：削除/リネームも含めて全部ステージ
           git add -A
-      
-          # 何も無ければ抜ける
           git diff --cached --quiet && { echo "Nothing to commit"; exit 0; }
-      
           git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')"
-      
-          # リモート更新を安全に取り込み
           git pull --rebase --autostash
           git push
