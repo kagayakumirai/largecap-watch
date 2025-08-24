@@ -38,10 +38,19 @@ def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Pa
         hist.sort_values(["ts", "symbol"], inplace=True)
         hist.drop_duplicates(["ts", "symbol"], keep="last", inplace=True)
         hist.to_csv(out, index=False)
-    except Exception:
-        pass
+    except Exception:pass
+    
+    path_u = persist_trails("usd", latest_usd)
+    path_b = persist_trails("btc", latest_btc)
+    print("[TRAILS] appended:", path_u, path_b)
+    for p in (path_u, path_b):
+        try:
+            print("[TRAILS] tail:", p, "\n", Path(p).read_text().splitlines()[-2:])
+        except Exception: pass
 
     return out
+
+
 
 # ------------------------------------------------------------
 # utils / HTTP
@@ -503,4 +512,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
