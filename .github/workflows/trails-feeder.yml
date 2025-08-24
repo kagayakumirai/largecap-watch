@@ -3,7 +3,7 @@ name: Trails Feeder (15m)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/60 * * * *"
+    - cron: "*/15 * * * *"
 
 # ← これを追加（または下の jobs.run.permissions に置いてもOK）
 permissions:
