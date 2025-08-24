@@ -84,18 +84,18 @@ jobs:
           pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
 
       # 6) 強弱（USD）
-      #       - name: Run USD strength (15m)
-      #       run: |
-      #        python largecap_strength.py --config config_largecap.effective.yaml
+      - name: Run USD strength (15m)
+        run: |
+          python largecap_strength.py --config config_largecap.effective.yaml
 
       # 7) 429回避
       - name: Pause to avoid 429
         run: sleep 8
 
       # 8) 強弱（BTC建て）
-      # - name: Run BTC strength (15m)
-      #     run: |
-      #       python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
+      - name: Run BTC strength (15m)
+        run: |
+          python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
 
       # 9) USD×BTC 比較（トレイルも内部で更新される想定）
       - name: Run compare
