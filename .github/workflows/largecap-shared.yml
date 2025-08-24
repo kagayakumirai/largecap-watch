@@ -207,6 +207,20 @@ jobs:
           echo "== tail BTC =="
           tail -n 3 data/score_trails_btc.csv || true
 
+      # 迷子の生成物を data/ へ強制移動（保険）
+      - name: Normalize artifacts into data/
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p data
+      
+          # 直下に転がっていたら data/ へ移動
+          for f in largecap_*.png largecap_*.csv score_trails_*.png score_trails_*.csv; do
+            [[ -e "$f" ]] && mv -f "$f" data/
+          done
+
+
       # 11) 生成物をコミット
       - name: Commit & push artifacts
         shell: bash
