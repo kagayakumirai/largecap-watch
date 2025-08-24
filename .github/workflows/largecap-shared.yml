@@ -5,33 +5,36 @@ on:
     inputs:
       send_discord:
         type: boolean
-        default: true            # ← 既定で送る。不要なら caller 側で false に
+        default: true
       python-version:
         type: string
         default: '3.11'
-      trails_keep_hours:         # ← daily だけ >0 を渡す
+      trails_keep_hours:         # daily だけ >0 を渡す
         type: number
         default: 0
     secrets:
       DISCORD_WEBHOOK_URL:
         required: false
+      DISCORD_WEBHOOK:           # 旧名も許容
+        required: false
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 25        # ← ここに置く（全呼び出しに適用）
+    timeout-minutes: 25
     permissions:
       contents: write
     env:
-      MPLBACKEND: Agg           # ← これをJobに入れておくと安心
-      
+      MPLBACKEND: Agg
+      # if: から参照できるよう job 環境にまとめる
+      WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL || secrets.DISCORD_WEBHOOK }}
+
     steps:
       # 1) リポジトリ取得
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ★ 追加（checkout 直後）
       - name: Sync repo (pull latest)
         run: |
           git config --global pull.rebase true
@@ -43,16 +46,17 @@ jobs:
           python-version: ${{ inputs.python-version }}
           cache: pip
 
-      # 3) yq（念のため）
-      - name: Install yq
+      # 3) 依存
+      - name: Install deps
+        shell: bash
         run: |
-          curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
-          chmod +x /usr/local/bin/yq
-          /usr/local/bin/yq --version
+          set -euo pipefail
+          python -m pip install -U pip
+          pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
 
-      # 4) 除外リストを注入して *.effective.yaml を生成（← ここが“アクションの呼び出し”）
-      #    事前に .github/actions/build-effectives/action.yml を置いてある前提
+      # 4) effective を作成（部品）
       - name: Build effective configs (inject excludes)
+        id: eff
         uses: ./.github/actions/build-effectives
         with:
           env-file: .github/workflows/largecap-watch.env
@@ -62,55 +66,46 @@ jobs:
             config_largecap_compare.yaml
 
       - name: Sanity check excludes (15m)
+        shell: bash
         run: |
           python - <<'PY'
-          import os, json, yaml, pathlib  # ← requests を消す
-          cfgs = [
+          import yaml, pathlib
+          for p in (
               "config_largecap.effective.yaml",
               "config_largecap_btc.effective.yaml",
               "config_largecap_compare.effective.yaml",
-          ]
-          for p in cfgs:
-              if not pathlib.Path(p).exists():
+          ):
+              path = pathlib.Path(p)
+              if not path.exists():
                   print(f"[CFG] skip {p} (not found)")
                   continue
-              y = yaml.safe_load(open(p, encoding="utf-8")) or {}
+              y = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
               ex = y.get("exclude_ids") or []
               print(f"[CFG] {p}: exclude_ids={len(ex)}")
           PY
 
-      
-      # 5) 依存
-      - name: Install deps
-        run: |
-          python -m pip install -U pip
-          pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
-
-      # 6) 強弱（USD）
+      # 5) 強弱（USD/BTC）
       - name: Run USD strength (15m)
-        run: |
-          python largecap_strength.py --config config_largecap.effective.yaml
+        shell: bash
+        run: python largecap_strength.py --config config_largecap.effective.yaml
 
-      # 7) 429回避
       - name: Pause to avoid 429
+        shell: bash
         run: sleep 8
 
-      # 8) 強弱（BTC建て）
       - name: Run BTC strength (15m)
-        run: |
-          python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
+        shell: bash
+        run: python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
 
-      # compare は常に config だけで実行（--trails-* は渡さない）
-      # 9) USD×BTC 比較（トレイルも内部で更新される想定）
+      # 6) 比較（--trails-* は渡さない）
       - name: Run compare
         shell: bash
         run: |
           set -euo pipefail
           python compare_strength.py --config config_largecap_compare.effective.yaml
 
-      # daily のときだけ長期トレイルを更新
+      # 7) daily のときだけ長期トレイルを更新
       - name: Update trails (long-range; daily only)
-      # OK：数値にキャストして > 0 を bool に評価
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         shell: bash
         run: |
@@ -122,47 +117,9 @@ jobs:
             --out-btc  data/score_trails_btc.png \
             --out-mix  data/score_trails_usdxbtc.png \
             --trails-file data/trails_db.json \
-            --trails-keep-hours ${{ inputs.trails_keep_hours }
+            --trails-keep-hours ${{ inputs.trails_keep_hours }}
 
-      - name: Inspect trails files (do we have today?)
-        shell: bash
-        run: |
-          set -euo pipefail
-      
-          echo "== ls -l data =="
-          ls -l data || true
-      
-          echo "== grep today (UTC & JST-like) =="
-          d_utc=$(date -u +%Y-%m-%d)
-          d_jst=$(TZ=Asia/Tokyo date +%Y-%m-%d)
-          echo "look for $d_utc or $d_jst"
-          for f in data/score_trails_*.csv ; do
-            echo "-- $f"
-            (grep -n "$d_utc" "$f" || true) | tail -n 3
-            (grep -n "$d_jst" "$f"  || true) | tail -n 3
-          done
-      
-          echo "== pandas view =="
-          python - <<'PY'
-          import pandas as pd, pathlib
-          from zoneinfo import ZoneInfo
-          JST = ZoneInfo("Asia/Tokyo")
-          
-          for side in ("usd","btc"):
-              p = pathlib.Path("data")/f"score_trails_{side}.csv"
-              if not p.exists():
-                  print("[MISS]", p)
-                  continue
-              df = pd.read_csv(p)
-              ts = pd.to_datetime(df["ts"], errors="coerce", utc=True)
-              ok = ts.notna().sum()
-              mx = str(ts.dropna().max())
-              print(f"[{side}] rows={len(df)}  parsed={ok}  max_ts={mx}")
-              print(df.tail(3).to_string(index=False))
-          PY
-
-
-      # 直下に出た生成物を data/ に集約（保険）
+      # 8) 迷子の生成物を data/ に集約（保険）
       - name: Normalize artifacts into data/
         shell: bash
         run: |
@@ -173,23 +130,15 @@ jobs:
             [[ -e "$f" ]] && mv -f "$f" data/
           done
 
-
-      # Discord 送信：data/ だけを見る & 鮮度ガード
+      # 9) Discord 送信（data/ 固定 + 鮮度ガード）
       - name: Send charts to Discord
         if: ${{ inputs.send_discord && env.WEBHOOK != '' }}
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL || secrets.DISCORD_WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
-      
-          # Webhook を安全化（改行/前後空白除去）
-          WEBHOOK="$(printf '%s' "${WEBHOOK:-}" | tr -d '\r\n' | sed -e 's/^ *//' -e 's/ *$//')"
-          [[ -n "$WEBHOOK" ]] || { echo "ERROR: WEBHOOK empty"; exit 1; }
-          echo "Webhook: ...${WEBHOOK: -6}"
-      
-          # 送るファイルは data/ に固定（** は使わない）
-          files=(
+          WEBHOOK="$(printf '%s' "$WEBHOOK" | tr -d '\r\n' | sed -e 's/^ *//' -e 's/ *$//')"
+
+          files=( 
             data/largecap_usd_vs_btc.png
             data/score_trails_usd.png
             data/score_trails_btc.png
@@ -197,26 +146,15 @@ jobs:
             data/largecap_strength_btc.png
             data/score_trails_usdxbtc.png
           )
-      
-          # 存在と“鮮度”を確認（例：1時間以内更新）
-          now=$(date +%s)
-          max_age=$((60*60))  # 1h
+
+          now=$(date +%s); max_age=$((60*60))
           for f in "${files[@]}"; do
-            [[ -f "$f" ]] || { echo "ERROR: missing $f"; exit 1; }
-            mtime=$(stat -c %Y "$f")
-            age=$((now - mtime))
-            size=$(stat -c %s "$f")
-            echo "$(printf '%-33s' "$f")  mtime=$(date -u -d "@$mtime" +'%F %T UTC')  size=${size}B  age=${age}s"
-            if (( age > max_age )); then
-              echo "ERROR: $f is older than $((max_age/60)) min → 古い画像は送信しません"; exit 1
-            fi
+            [[ -f "$f" ]] || { echo "missing $f"; exit 1; }
+            m=$(stat -c %Y "$f"); (( now-m <= max_age )) || { echo "stale $f"; exit 1; }
           done
-      
-          # メッセージ
-          msg="LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')"
-          payload="$(jq -n --arg content "$msg" '{content:$content}')"
-      
-          # 送信（順番は任意・URLは必ず二重引用符）
+
+          payload="$(jq -n --arg content "LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')" '{content:$content}')"
+
           curl --fail-with-body -sS \
             -F "payload_json=${payload}" \
             -F "file1=@${files[0]};type=image/png" \
@@ -227,59 +165,13 @@ jobs:
             -F "file6=@${files[5]};type=image/png" \
             "$WEBHOOK"
 
-            
-      - name: Inspect trails files (do we have today?)
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "== ls -l data =="
-          ls -l data || true
-      
-          echo "== grep today (UTC & JST-like) =="
-          d_utc=$(date -u +%Y-%m-%d)          # 例 2025-08-24
-          d_jst=$(TZ=Asia/Tokyo date +%Y-%m-%d)
-          echo "look for $d_utc or $d_jst"
-          for f in data/score_trails_*.csv ; do
-            echo "-- $f"
-            (grep -n "$d_utc" "$f" || true) | tail -n 3
-            (grep -n "$d_jst" "$f"  || true) | tail -n 3
-          done
-      
-      
-      - name: Debug show latest trail rows
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "== tail USD =="
-          tail -n 3 data/score_trails_usd.csv || true
-          echo "== tail BTC =="
-          tail -n 3 data/score_trails_btc.csv || true
-
-      # 迷子チェック：root に生成物があれば失敗
-      - name: Assert no artifacts outside data/
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          bad=()
-          for pat in "largecap_*.png" "largecap_*.csv" "score_trails_*.png" "score_trails_*.csv"; do
-            mapfile -t found < <(compgen -G "$pat" || true)
-            (( ${#found[@]} )) && bad+=("${found[@]}")
-          done
-          if (( ${#bad[@]} )); then
-            echo "ERROR: artifacts must live in data/:"
-            printf '  %s\n' "${bad[@]}"
-            exit 1
-          fi
-
-      # 11) 生成物コミット（削除/移動も含めて全部ステージ）
+      # 10) 生成物コミット
       - name: Commit & push artifacts
         shell: bash
         run: |
           set -euo pipefail
           git config user.name  github-actions
           git config user.email github-actions@github.com
-      
           git add -A
           git diff --cached --quiet && { echo "Nothing to commit"; exit 0; }
           git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')"
