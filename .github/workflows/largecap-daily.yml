@@ -21,7 +21,7 @@ jobs:
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
     with:
       # 送信ON/OFF（shared 側 inputs に合わせる）
-      send_discord: true
+      send_discord: false
       trails_keep_hours: 8760   # 例：365日保持
       # Python のバージョンを上書きしたい場合（任意）
       python-version: '3.11'
