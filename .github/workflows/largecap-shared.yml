@@ -138,6 +138,37 @@ jobs:
             -F "file5=@${s_btc[0]};type=image/png" \
             "$WEBHOOK"
             
+      - name: Inspect trails files (do we have today?)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "== ls -l data =="
+          ls -l data || true
+      
+          echo "== grep today (UTC & JST-like) =="
+          d_utc=$(date -u +%Y-%m-%d)          # 例 2025-08-24
+          d_jst=$(TZ=Asia/Tokyo date +%Y-%m-%d)
+          echo "look for $d_utc or $d_jst"
+          for f in data/score_trails_*.csv ; do
+            echo "-- $f"
+            (grep -n "$d_utc" "$f" || true) | tail -n 3
+            (grep -n "$d_jst" "$f"  || true) | tail -n 3
+          done
+      
+          echo "== pandas view =="
+            python - <<'PY'
+            import pandas as pd, pathlib
+            for side in ("usd","btc"):
+              p = pathlib.Path("data")/f"score_trails_{side}.csv"
+            if not p.exists(): 
+              print("[MISS]", p); 
+              continue
+            df = pd.read_csv(p)
+            # 失敗を可視化
+            ts = pd.to_datetime(df["ts"], errors="coerce", utc=True)
+            print(f"[{side}] rows={len(df)}  notna={ts.notna().sum()}  max_ts={str(ts.dropna().max())}")
+            print(df.tail(3).to_string(index=False))
+            PY
 
 
       - name: Debug show latest trail rows
