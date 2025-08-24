@@ -138,25 +138,7 @@ jobs:
             -F "file5=@${s_btc[0]};type=image/png" \
             "$WEBHOOK"
             
-      - name: Repair accidental 'sore_trails' files (one-time safety)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p data
-          for side in usd btc; do
-            bad="data/score_trails_${side}.csv"
-            good="data/score_trails_${side}.csv"
-            if [ -f "$bad" ]; then
-              echo "::warning::Found $bad; merging into $good"
-              if [ -f "$good" ]; then
-                # ヘッダを除いて追記
-                tail -n +2 "$bad" >> "$good"
-              else
-                mv "$bad" "$good"
-              fi
-              rm -f "$bad"
-            fi
-          done
+
 
       - name: Debug show latest trail rows
         shell: bash
