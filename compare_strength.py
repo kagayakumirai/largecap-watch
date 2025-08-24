@@ -438,6 +438,20 @@ def main():
     plot_trails("usd", topn=20, fname="score_trails_usd.png")
     plot_trails("btc", topn=20, fname="score_trails_btc.png")
 
+    # ==== USD×BTC (合成) のトレイル ====
+    lam = float(cfg.get("compare_penalty_lambda", 0.3))  # 既存の compare λ を流用
+    latest_combo = df[["symbol"]].copy()
+    latest_combo["score"] = (
+        df["usd_score"] + df["btc_score"] - lam * (df["usd_score"] - df["btc_score"]).abs()
+    )
+    
+    # CSV 追記（短期：168h保持）
+    persist_trails("usdxbtc", latest_combo, hours_keep=168)
+    
+    # 折れ線を出力（短期）
+    plot_trails("usdxbtc", topn=20, fname="score_trails_usdxbtc.png")
+
+
     # ---- 出力
     out_csv = out_dir / cfg.get("out_csv", "largecap_compare.csv")
     out_png = out_dir / cfg.get("out_png_scatter", "largecap_usd_vs_btc.png")
@@ -534,6 +548,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
