@@ -151,8 +151,6 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s globstar nullglob
-          # 念のため整形
-          W=$(printf '%s' "${DISCORD_WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
           usd=(**/largecap_usd_vs_btc.png)
           t1=(**/score_trails_usd.png)
@@ -180,8 +178,7 @@ jobs:
             -F "file4=@${s_usd[0]};type=image/png" \
             -F "file5=@${s_btc[0]};type=image/png" \
             -F "file6=@${t3[0]};type=image/png" \
-            "$W"
-            # "$WEBHOOK"
+            "$WEBHOOK"
             
       - name: Inspect trails files (do we have today?)
         shell: bash
