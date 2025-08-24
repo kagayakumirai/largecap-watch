@@ -87,16 +87,26 @@ def _get_json_with_retries(url, params, *, timeout=30, attempts=4):
 # ------------------------------------------------------------
 # trails 保存/読込/描画
 # ------------------------------------------------------------
-TRAILS_DIR = Path("data")
-TRAILS_DIR.mkdir(parents=True, exist_ok=True)
 
-def load_trails(side: str) -> pd.DataFrame | None:
+def load_trails(side: str, hours: int | None = None) -> pd.DataFrame | None:
+    """
+    data/score_trails_<side>.csv を読み込み。
+    ts を JST の tz-aware に正規化し、hours が指定されていればその分だけ残す。
+    """
     p = TRAILS_DIR / f"score_trails_{side}.csv"
-    if not p.exists(): return None
+    if not p.exists():
+        return None
+
     df = pd.read_csv(p)
+    # すべて tz-aware(JST) に統一
     df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
     df.sort_values(["ts", "symbol"], inplace=True)
-    return df
+
+    if hours is not None:
+        cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=hours)
+        df = df[df["ts"] >= cutoff]
+
+    return df if not df.empty else None
 
 def _spread_labels(yvals, min_gap):
     """yvals（データ座標）を上下min_gap以上あくように順にずらす簡易アルゴリズム"""
@@ -501,6 +511,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
