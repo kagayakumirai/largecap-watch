@@ -18,32 +18,55 @@ from zoneinfo import ZoneInfo
 JST = ZoneInfo("Asia/Tokyo")
 TRAILS_DIR = Path("data"); TRAILS_DIR.mkdir(parents=True, exist_ok=True)
 
+# ---------- trails ----------
 def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Path:
-    """最新スコアを data/score_trails_<side>.csv に追記し、古い行・重複を整理"""
-    ts = pd.Timestamp.now(tz=JST).isoformat(timespec="seconds")
-    cur = df_now[["symbol", "score"]].copy()
-    cur.insert(0, "ts", ts)
-    cur.insert(1, "side", side)
+    """
+    side: 'usd' / 'btc'
+    df_now: columns = ['symbol','score'] を想定
+    """
+    side = side.lower()
+    out = Path("data") / f"score_trails_{side}.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
 
-    out = TRAILS_DIR / f"score_trails_{side}.csv"
-    header = not out.exists()
-    cur.to_csv(out, index=False, mode="a", header=header, lineterminator="\n")
+    # 追加分（UTCで統一）
+    now_utc = pd.Timestamp.now(tz="UTC")
+    add = pd.DataFrame(
+        {
+            "ts": [now_utc] * len(df_now),
+            "side": side,
+            "symbol": df_now["symbol"].astype(str).values,
+            "score": pd.to_numeric(df_now["score"], errors="coerce").values,
+        }
+    )
 
-    try:
+    # 既存を読み込み → 連結
+    if out.exists():
         hist = pd.read_csv(out)
-        # すべてJSTに正規化
-        hist["ts"] = pd.to_datetime(hist["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
-        # 168h + 余裕6h を残す
-        cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=hours_keep + 6)
-        hist = hist[hist["ts"] >= cutoff]
-        # 時刻×シンボルの重複を後勝ちで除去
-        hist.sort_values(["ts", "symbol"], inplace=True)
-        hist.drop_duplicates(["ts", "symbol"], keep="last", inplace=True)
-        hist.to_csv(out, index=False)
-    except Exception:
-        pass
+    else:
+        hist = pd.DataFrame(columns=["ts", "side", "symbol", "score"])
 
+    # 型そろえ
+    hist["ts"] = pd.to_datetime(hist["ts"], utc=True, errors="coerce")
+    hist["side"] = hist["side"].astype(str)
+    hist["symbol"] = hist["symbol"].astype(str)
+    hist["score"] = pd.to_numeric(hist["score"], errors="coerce")
+
+    merged = pd.concat([hist, add], ignore_index=True)
+
+    # ウィンドウ維持（168h）
+    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=hours_keep)
+    merged = merged.dropna(subset=["ts"])
+    merged = merged[merged["ts"] >= cutoff]
+
+    # 時間＆シンボルで重複排除（同時刻は最後を残す）
+    merged = merged.sort_values(["ts", "symbol"])
+    merged = merged.drop_duplicates(["ts", "symbol"], keep="last")
+
+    # 保存（UTCのまま）
+    merged.to_csv(out, index=False)
+    print(f"[TRAILS] appended into {out}, last ts (UTC) = {merged['ts'].max()}")
     return out
+
 
 
 
@@ -511,6 +534,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
