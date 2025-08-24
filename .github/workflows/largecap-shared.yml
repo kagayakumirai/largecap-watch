@@ -102,14 +102,6 @@ jobs:
         run: |
           python compare_strength.py --config config_largecap_compare.effective.yaml
 
-      - name: Debug show latest trail rows
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "== tail USD =="
-          if [ -f data/score_trails_usd.csv ]; then tail -n 3 data/score_trails_usd.csv; else echo "not found"; fi
-          echo "== tail BTC =="
-          if [ -f data/score_trails_btc.csv ]; then tail -n 3 data/score_trails_btc.csv; else echo "not found"; fi
 
       - name: Send charts to Discord
         if: ${{ inputs.send_discord && env.WEBHOOK != '' }}
@@ -145,6 +137,35 @@ jobs:
             -F "file4=@${s_usd[0]};type=image/png" \
             -F "file5=@${s_btc[0]};type=image/png" \
             "$WEBHOOK"
+            
+      - name: Repair accidental 'sore_trails' files (one-time safety)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          for side in usd btc; do
+            bad="data/sore_trails_${side}.csv"
+            good="data/score_trails_${side}.csv"
+            if [ -f "$bad" ]; then
+              echo "::warning::Found $bad; merging into $good"
+              if [ -f "$good" ]; then
+                # ヘッダを除いて追記
+                tail -n +2 "$bad" >> "$good"
+              else
+                mv "$bad" "$good"
+              fi
+              rm -f "$bad"
+            fi
+          done
+
+      - name: Debug show latest trail rows
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "== tail USD =="
+          tail -n 3 data/score_trails_usd.csv || true
+          echo "== tail BTC =="
+          tail -n 3 data/score_trails_btc.csv || true
 
       # 11) 生成物をコミット
       - name: Commit & push artifacts
