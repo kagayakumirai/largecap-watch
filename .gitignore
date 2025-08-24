@@ -1,0 +1,2 @@
+# 実効設定ダンプを除外
+config_*effective.yaml
