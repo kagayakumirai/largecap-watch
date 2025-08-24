@@ -155,14 +155,14 @@ jobs:
           usd=(**/largecap_usd_vs_btc.png)
           t1=(**/score_trails_usd.png)
           t2=(**/score_trails_btc.png)
-          t3=(**/score_trails_usb×btc.png)        
+          t3=(**/score_trails_usd×btc.png)        
           s_usd=(**/largecap_strength.png)
           s_btc=(**/largecap_strength_btc.png)
       
           : "${usd:?missing usd_vs_btc.png}"
           : "${t1:?missing score_trails_usd.png}"
           : "${t2:?missing score_trails_btc.png}"
-          : "${t3:?missing score_trails_usb×btc.png}"        
+          : "${t3:?missing score_trails_usd×btc.png}"        
           : "${s_usd:?missing largecap_strength.png}"
           : "${s_btc:?missing largecap_strength_btc.png}"
     
