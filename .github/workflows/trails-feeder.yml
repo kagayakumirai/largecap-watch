@@ -22,5 +22,6 @@ jobs:
     with:
       # 送信ON/OFF（shared 側 inputs に合わせる）
       send_discord: true
+      trails_keep_hours: 0
       # Python のバージョンを上書きしたい場合（任意）
       python-version: '3.11'
