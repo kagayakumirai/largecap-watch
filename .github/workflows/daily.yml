@@ -2,8 +2,8 @@ name: LargeCap Daily to Discord
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * *"   # 09:00 JST
+ # schedule:
+ #   - cron: "0 0 * * *"   # 09:00 JST
 
 jobs:
   run-and-send:
