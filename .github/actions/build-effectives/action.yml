@@ -15,6 +15,11 @@ inputs:
     required: false
     default: "config_largecap.yaml config_largecap_btc.yaml config_largecap_compare.yaml"
 
+outputs:
+  effective_list:
+    description: "newline-separated list of generated effective yaml paths"
+    value: ${{ steps.build.outputs.effective_list }}
+
 runs:
   using: "composite"
   steps:
@@ -25,6 +30,7 @@ runs:
 
     - name: Install minimal deps for build-effectives
       shell: bash
+      working-directory: ${{ github.workspace }}
       run: |
         set -euo pipefail
         python -m pip install -U pip
@@ -32,14 +38,18 @@ runs:
 
     - name: Load .env into GITHUB_ENV (sans comments/webhook)
       shell: bash
+      working-directory: ${{ github.workspace }}
       run: |
         set -euo pipefail
         sed -e 's/\r$//' "${{ inputs.env-file }}" \
           | grep -Ev '^[[:space:]]*($|#)|^[[:space:]]*DISCORD_WEBHOOK(_URL)?=' >> "$GITHUB_ENV" || true
+        echo "[LOG] PWD=$(pwd)"
         echo "[LOG] LARGECAP_EXCLUDE=${LARGECAP_EXCLUDE:-[]}"
 
     - name: Build effective YAMLs
+      id: build
       shell: bash
+      working-directory: ${{ github.workspace }}
       run: |
         set -euo pipefail
         python - <<'PY'
@@ -63,23 +73,35 @@ runs:
 
         ex_ids = sorted({str(x) for s in ex_list for x in sym_to_ids(s) if x})
 
-        # 改行を含む入力を安全に受け取って空白で分割
         cfg_raw = """${{ inputs.configs }}"""
-        cfg_files = cfg_raw.split()   # 改行・スペースをまとめて分割
+        cfg_files = cfg_raw.split()
+
+        out_paths = []
         for base in cfg_files:
             p = pathlib.Path(base)
             if not p.exists():
                 print(f"[skip] {base}")
                 continue
+
             data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
             cur = data.get("exclude_ids") or []
             if not isinstance(cur, list):
                 cur = [cur]
             cur = [str(x) for x in cur if x]
+
             merged = sorted({*cur, *ex_ids})
             data["exclude_ids"] = merged
             data["exclude"] = merged
+
             out = p.with_suffix(".effective.yaml")
-            out.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+            out.write_text(
+                yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+                encoding="utf-8"
+            )
             print(f"[OK] wrote {out} exclude_ids={len(merged)}")
+            out_paths.append(str(out))
+
+        # outputs
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+            fh.write("effective_list=" + "\\n".join(out_paths) + "\n")
         PY
