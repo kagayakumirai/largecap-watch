@@ -214,9 +214,15 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
       
-          # data/ 配下に統一
+          # data/ 配下に統一・compare も含める
           files=()
-          for f in data/largecap_*.png data/largecap_*.csv data/score_trails_*.png data/score_trails_*.csv; do
+          for f in \
+            data/largecap_*.png \
+            data/largecap_*.csv \
+            data/largecap_compare_*.csv \
+            data/score_trails_*.png \
+            data/score_trails_*.csv
+          do
             [[ -e "$f" ]] && files+=("$f")
           done
       
@@ -225,7 +231,18 @@ jobs:
       
           git config user.name  github-actions
           git config user.email github-actions@github.com
+      
+          # 先に add/commit → その後 rebase（未ステージで止まらないように）
           git add -- "${files[@]}"
-          git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')" || exit 0
-          git pull --rebase
+          git commit -m "Update trails $(date -u +'%Y-%m-%dT%H:%MZ')" || echo "Nothing to commit"
+      
+          # リモート更新を取り込みつつ安全に push
+          git pull --rebase --autostash
           git push
+      
+          # 念のため：未ステージのゴミがないか確認（あるなら失敗させて気付ける）
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "ERROR: Unstaged/untracked files remain:" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
