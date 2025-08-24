@@ -110,7 +110,8 @@ jobs:
 
       # daily のときだけ長期トレイルを更新
       - name: Update trails (long-range; daily only)
-        if: ${{ inputs.trails_keep_hours > 0 }}
+      # OK：数値にキャストして > 0 を bool に評価
+        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         shell: bash
         run: |
           set -euo pipefail
