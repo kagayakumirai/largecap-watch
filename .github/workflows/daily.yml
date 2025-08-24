@@ -1,5 +1,5 @@
 name: LargeCap Daily to Discord
-
+# 旧
 on:
   workflow_dispatch:
  # schedule:
