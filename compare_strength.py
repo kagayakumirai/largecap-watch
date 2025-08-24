@@ -16,37 +16,32 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from zoneinfo import ZoneInfo
 JST = ZoneInfo("Asia/Tokyo")
+TRAILS_DIR = Path("data"); TRAILS_DIR.mkdir(parents=True, exist_ok=True)
 
 def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Path:
-    """data/score_trails_<side>.csv に追記し、古い行を掃除する"""
-    ts = dt.datetime.now(JST).isoformat(timespec="seconds")  # JSTで記録
+    """最新スコアを data/score_trails_<side>.csv に追記し、古い行・重複を整理"""
+    ts = pd.Timestamp.now(tz=JST).isoformat(timespec="seconds")
     cur = df_now[["symbol", "score"]].copy()
     cur.insert(0, "ts", ts)
     cur.insert(1, "side", side)
 
-    out = Path("data") / f"score_trails_{side}.csv"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = TRAILS_DIR / f"score_trails_{side}.csv"
     header = not out.exists()
-    cur.to_csv(out, index=False, mode="a", header=header)
+    cur.to_csv(out, index=False, mode="a", header=header, lineterminator="\n")
 
-    # 掃除（任意・失敗は無視）
     try:
         hist = pd.read_csv(out)
+        # すべてJSTに正規化
         hist["ts"] = pd.to_datetime(hist["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
+        # 168h + 余裕6h を残す
         cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=hours_keep + 6)
         hist = hist[hist["ts"] >= cutoff]
+        # 時刻×シンボルの重複を後勝ちで除去
         hist.sort_values(["ts", "symbol"], inplace=True)
         hist.drop_duplicates(["ts", "symbol"], keep="last", inplace=True)
         hist.to_csv(out, index=False)
-    except Exception:pass
-    
-    path_u = persist_trails("usd", latest_usd)
-    path_b = persist_trails("btc", latest_btc)
-    print("[TRAILS] appended:", path_u, path_b)
-    for p in (path_u, path_b):
-        try:
-            print("[TRAILS] tail:", p, "\n", Path(p).read_text().splitlines()[-2:])
-        except Exception: pass
+    except Exception:
+        pass
 
     return out
 
@@ -95,16 +90,11 @@ def _get_json_with_retries(url, params, *, timeout=30, attempts=4):
 TRAILS_DIR = Path("data")
 TRAILS_DIR.mkdir(parents=True, exist_ok=True)
 
-def load_trails(side: str, hours: int = 168) -> pd.DataFrame:
+def load_trails(side: str) -> pd.DataFrame | None:
     p = TRAILS_DIR / f"score_trails_{side}.csv"
-    if not p.exists():
-        return pd.DataFrame()
+    if not p.exists(): return None
     df = pd.read_csv(p)
-    # tz-aware(UTC) → JST に統一
     df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
-    # 直近 hours に絞る（JST基準）
-    cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=hours)
-    df = df[df["ts"] >= cutoff]
     df.sort_values(["ts", "symbol"], inplace=True)
     return df
 
@@ -412,7 +402,6 @@ def main():
     trail_csv_btc = persist_trails("btc", latest_btc)
     print("[TRAILS] appended:", trail_csv_usd, trail_csv_btc)
     
-
     plot_trails("usd", topn=20, fname="score_trails_usd.png")
     plot_trails("btc", topn=20, fname="score_trails_btc.png")
 
@@ -512,5 +501,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
