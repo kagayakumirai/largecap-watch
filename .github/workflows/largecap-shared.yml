@@ -213,12 +213,16 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
+      
+          # data/ 配下に統一
           files=()
-          for f in largecap_*.png largecap_*.csv score_trails_*.png data/score_trails_*.csv; do
+          for f in data/largecap_*.png data/largecap_*.csv data/score_trails_*.png data/score_trails_*.csv; do
             [[ -e "$f" ]] && files+=("$f")
           done
+      
           (( ${#files[@]} )) || { echo "No artifacts to commit"; exit 0; }
           echo "Will commit: ${files[*]}"
+      
           git config user.name  github-actions
           git config user.email github-actions@github.com
           git add -- "${files[@]}"
