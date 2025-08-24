@@ -177,7 +177,7 @@ jobs:
             -F "file3=@${t2[0]};type=image/png" \        
             -F "file4=@${s_usd[0]};type=image/png" \
             -F "file5=@${s_btc[0]};type=image/png" \
-            -F "file6=@${t3[0]};type=image/png"         
+            -F "file6=@${t3[0]};type=image/png" \        
             "$WEBHOOK"
             
       - name: Inspect trails files (do we have today?)
