@@ -5,10 +5,13 @@ on:
     inputs:
       send_discord:
         type: boolean
-        default: true
+        default: true            # ← 既定で送る。不要なら caller 側で false に
       python-version:
         type: string
         default: '3.11'
+      trails_keep_hours:         # ← daily だけ >0 を渡す
+        type: number
+        default: 0
     secrets:
       DISCORD_WEBHOOK_URL:
         required: false
