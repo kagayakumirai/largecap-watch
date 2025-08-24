@@ -152,7 +152,7 @@ jobs:
           set -euo pipefail
           shopt -s globstar nullglob
           # 念のため整形
-          W=$(printf '%s' "${DISCORD_WEBHOOK_URL}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          W=$(printf '%s' "${DISCORD_WEBHOOK}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
           usd=(**/largecap_usd_vs_btc.png)
           t1=(**/score_trails_usd.png)
