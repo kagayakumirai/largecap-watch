@@ -142,7 +142,7 @@ jobs:
 
 
       - name: Send charts to Discord
-        if: ${{ inputs.send_discord && (secrets.DISCORD_WEBHOOK_URL || secrets.DISCORD_WEBHOOK) != '' }}
+        if: ${{ inputs.send_discord && env.WEBHOOK != '' }}
         continue-on-error: true
         env:
           # 旧名/新名どちらでもOKにするフォールバック
