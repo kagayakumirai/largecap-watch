@@ -170,7 +170,15 @@ jobs:
       
           head -n 3 data/trails_db.csv || true
 
-
+      # quiet legacy JSON warning (optional)
+      - name: Quiet legacy JSON history warning
+        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          [[ -f data/trails_db.json ]] || echo '{"usd":[],"btc":[]}' > data/trails_db.json
+      
 
 
       # 7) daily のときだけ長期トレイルを更新
