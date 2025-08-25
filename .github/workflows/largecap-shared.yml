@@ -12,6 +12,13 @@ on:
       trails_keep_hours:         # daily だけ >0 を渡す
         type: number
         default: 0
+      trails_show_hours:        # ← 描画に使う時間窓（15m: 48, daily: 720 など）
+        type: number
+        default: 48
+      render_daily_hour:        # ← daily の描画時刻（UTC 時）
+        type: string
+        default: '00'
+
     secrets:
       DISCORD_WEBHOOK_URL:
         required: false
