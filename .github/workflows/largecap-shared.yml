@@ -106,7 +106,7 @@ jobs:
 
       # 7) daily のときだけ長期トレイルを更新
       - name: Update trails (long-range; daily only)
-        if: ${{ inputs.trails_keep_hours != '0' }}   # ← これで日次だけ実行
+        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -118,6 +118,7 @@ jobs:
             --out-mix  data/score_trails_usdxbtc.png \
             --trails-file data/trails_db.json \
             --trails-keep-hours ${{ inputs.trails_keep_hours }}
+
 
       # 8) 迷子の生成物を data/ に集約（保険）
       - name: Normalize artifacts into data/
