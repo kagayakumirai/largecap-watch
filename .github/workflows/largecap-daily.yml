@@ -3,7 +3,7 @@ name: Largecap Daily
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/60 * * * *"
+    - cron: '5 * * * *'          # 毎時05分
 
 # ← これを追加（または下の jobs.run.permissions に置いてもOK）
 permissions:
@@ -22,6 +22,8 @@ jobs:
     with:
       # 送信ON/OFF（shared 側 inputs に合わせる）
       send_discord: true
-      trails_keep_hours: 8760   # 例：365日保持
+      trails_keep_hours: 2160   # 保持は90日など（任意）
+      trails_show_hours: 720    # 表示は30日
+      render_daily_hour: '09'   # UTC 00時だけ描画＆送信
       # Python のバージョンを上書きしたい場合（任意）
       python-version: '3.11'
