@@ -263,13 +263,13 @@ jobs:
           # USD 側のトレイルを更新
           python plot_score_trails.py \
             --metric usd \
-            --hist data/trails_db.json \
+            --hist data/trails_db.csv \
             --hours "$TRAILS_KEEP_HOURS"
       
           # BTC 側のトレイルを更新
           python plot_score_trails.py \
             --metric btc \
-            --hist data/trails_db.json \
+            --hist data/trails_db.csv \
             --hours "$TRAILS_KEEP_HOURS"
       
           # 生成されたファイル確認（ログ用）
