@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: largecap-Daily
+  group: largecap-all
   cancel-in-progress: true
 
 jobs:
