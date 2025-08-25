@@ -104,15 +104,16 @@ jobs:
           set -euo pipefail
           python compare_strength.py --config config_largecap_compare.effective.yaml
 
-      # (daily only) 履歴ファイルが無ければ空で初期化
+      # (daily only) 履歴ファイルが無ければ空CSVで初期化
       - name: Ensure trails history exists (daily)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p data
-          [[ -f data/trails_db.json ]] || echo '{"usd":[],"btc":[]}' > data/trails_db.json
-          ls -l --time-style=long-iso data/trails_db.json
+          # ヘッダだけのCSV（timestamp列が必要）
+          [[ -f data/trails_db.csv ]] || echo "timestamp,symbol,score,metric" > data/trails_db.csv
+          ls -l --time-style=long-iso data/trails_db.csv
 
 
       # 7) daily のときだけ長期トレイルを更新
