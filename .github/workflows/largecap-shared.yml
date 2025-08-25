@@ -179,6 +179,63 @@ jobs:
           mkdir -p data
           [[ -f data/trails_db.json ]] || echo '{"usd":[],"btc":[]}' > data/trails_db.json
       
+      # (daily only) trails_db.csv を検査・修復し、必要なら種付け
+      - name: Repair/seed trails history if needed (daily)
+        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          # 1) ない/空なら正しいヘッダで作る
+          if [[ ! -s data/trails_db.csv ]]; then
+            echo "timestamp,symbol,usd_score,btc_score" > data/trails_db.csv
+            echo "[repair] init header -> data/trails_db.csv"
+          else
+            # ヘッダ検査（timestamp が無ければ置き換え）
+            first=$(head -n1 data/trails_db.csv)
+            if ! echo "$first" | grep -q "^timestamp,"; then
+              echo "[repair] fix header"
+              tail -n +2 data/trails_db.csv > /tmp/_rest || true
+              echo "timestamp,symbol,usd_score,btc_score" > data/trails_db.csv
+              cat /tmp/_rest >> data/trails_db.csv || true
+            fi
+          fi
+      
+          # 2) 行が1（ヘッダのみ）なら、現在のスナップショットで種付け
+          if [[ $(wc -l < data/trails_db.csv) -le 1 ]]; then
+            python - <<'PY'
+            import pandas as pd, pathlib, datetime as dt
+            
+            def pick_score_col(df):
+                for c in ['score','usd_score','btc_score','value','strength']:
+                    if c in df.columns: return c
+                num = df.select_dtypes('number').columns.tolist()
+                return num[-1] if num else None
+            
+            p_usd = pathlib.Path('data/largecap_strength.csv')
+            p_btc = pathlib.Path('data/largecap_strength_btc.csv')
+            if (not p_usd.exists()) or (not p_btc.exists()):
+                raise SystemExit("snapshot csv missing")
+            
+            dfu = pd.read_csv(p_usd)
+            dfb = pd.read_csv(p_btc)
+            
+            cu = pick_score_col(dfu)
+            cb = pick_score_col(dfb)
+            a = dfu[['symbol', cu]].rename(columns={cu:'usd_score'})
+            b = dfb[['symbol', cb]].rename(columns={cb:'btc_score'})
+            m = a.merge(b, on='symbol', how='outer')
+            
+            ts = dt.datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'
+            m.insert(0, 'timestamp', ts)
+            m[['timestamp','symbol','usd_score','btc_score']].to_csv(
+                'data/trails_db.csv', mode='a', header=False, index=False
+            )
+            print(f"[seed] appended {len(m)} rows into data/trails_db.csv at {ts}")
+            PY
+          fi
+      
+          head -n 3 data/trails_db.csv || true
 
 
       # 7) daily のときだけ長期トレイルを更新
