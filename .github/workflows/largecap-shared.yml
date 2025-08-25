@@ -179,83 +179,108 @@ jobs:
           mkdir -p data
           [[ -f data/trails_db.json ]] || echo '{"usd":[],"btc":[]}' > data/trails_db.json
       
-      # (daily only) trails_db.csv を検査・修復（ヘッダ/改行/区切り/BOM）
-      - name: Repair/seed trails history if needed (daily)
+
+      - name: Repair trails history (daily; bash only)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p data
           f="data/trails_db.csv"
+          mkdir -p data
       
-          # 1) 無ければ正しいヘッダで新規作成
-          if [[ ! -f "$f" ]]; then
-            echo "timestamp,symbol,usd_score,btc_score" > "$f"
-            echo "[repair] init header -> $f"
-          fi
+          # 無ければ作成
+          [[ -f "$f" ]] || echo "timestamp,symbol,usd_score,btc_score" > "$f"
       
-          # 2) 改行コードをLF化（CRLF混入対策）
+          # CRLF→LF
           sed -i 's/\r$//' "$f"
       
-          # 3) 先頭にBOMが付いていたら除去
-          # （BOMが付くとヘッダが 'ï»¿timestamp' になり、pandasが 'timestamp' を見失う）
+          # BOM除去
           if head -c3 "$f" | grep -q $'^\xEF\xBB\xBF'; then
             tail -c +4 "$f" > /tmp/_clean && mv /tmp/_clean "$f"
-            echo "[repair] removed UTF-8 BOM"
+            echo "[repair] removed BOM"
           fi
       
-          # 4) 区切りがカンマか確認（;やTABなら置換）
-          head -n1 "$f" | grep -q ',' || {
+          # 区切り子を , に統一（; や TAB の場合）
+          if ! head -n1 "$f" | grep -q ','; then
             if head -n1 "$f" | grep -q ';'; then
-              sed -i '1s/;/,/g' "$f"
-              sed -i '2,$s/;/,/g' "$f"
+              tr ';' ',' < "$f" > /tmp/_csv && mv /tmp/_csv "$f"
               echo "[repair] replaced ; -> ,"
             elif head -n1 "$f" | grep -q $'\t'; then
               awk -v OFS=',' 'BEGIN{FS="\t"} {print $0}' "$f" > /tmp/_csv && mv /tmp/_csv "$f"
               echo "[repair] replaced TAB -> ,"
             fi
-          }
+          fi
       
-          # 5) ヘッダ検査：timestamp が無ければヘッダを正規化
-          h="$(head -n1 "$f")"
-          if ! echo "$h" | grep -q '^timestamp,'; then
-            echo "[repair] normalize header"
+          # ヘッダを正規化（timestamp で始まる形に）
+          if ! head -n1 "$f" | grep -q '^timestamp,'; then
             tail -n +2 "$f" > /tmp/_rest || true
             printf "timestamp,symbol,usd_score,btc_score\n" > "$f"
             cat /tmp/_rest >> "$f" || true
+            echo "[repair] normalized header"
           fi
       
-          # 6) 行が1（ヘッダのみ）なら現在のスナップショットで種付け
-          if [[ $(wc -l < "$f") -le 1 ]]; then
-            cat >/tmp/seed_trails.py <<'PY'
-            import pandas as pd, pathlib, datetime as dt
-            def pick_score_col(df):
-                for c in ['score','usd_score','btc_score','value','strength']:
-                    if c in df.columns: return c
-                num = df.select_dtypes('number').columns.tolist()
-                return num[-1] if num else None
-                p_usd = pathlib.Path('data/largecap_strength.csv')
-                p_btc = pathlib.Path('data/largecap_strength_btc.csv')
-                if (not p_usd.exists()) or (not p_btc.exists()):
-                    raise SystemExit("snapshot csv missing")
-                dfu = pd.read_csv(p_usd)
-                dfb = pd.read_csv(p_btc)
-                cu = pick_score_col(dfu); cb = pick_score_col(dfb)
-                a = dfu[['symbol', cu]].rename(columns={cu:'usd_score'})
-                b = dfb[['symbol', cb]].rename(columns={cb:'btc_score'})
-                m = a.merge(b, on='symbol', how='outer')
-                ts = dt.datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'
-                m.insert(0, 'timestamp', ts)
-                m[['timestamp','symbol','usd_score','btc_score']].to_csv(
-                    'data/trails_db.csv', mode='a', header=False, index=False
-                )
-                print(f"[seed] appended {len(m)} rows into data/trails_db.csv at {ts}")
-                PY
-                python /tmp/seed_trails.py
-            fi     
-            echo "== head trails_db.csv =="
-            head -n 3 "$f" | cat -A
+          echo "== head trails_db.csv =="
+          head -n 3 "$f" | cat -A
 
+
+      - name: Seed trails history from current snapshots (bash only; first run)
+        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          f="data/trails_db.csv"
+          # 行数が1（ヘッダのみ）の時だけ実行
+          if [[ $(wc -l < "$f") -le 1 ]]; then
+            ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+      
+            # ==== USD 側（symbol と スコア列を抽出）====
+            pick_cols() {
+              # $1=csv, $2="候補名（空白区切り）"
+              awk -F',' -v cand="$2" '
+                NR==1{
+                  n=split(cand,a," ");
+                  for(i=1;i<=NF;i++){
+                    l=tolower($i)
+                    if(l=="symbol") sym=i
+                    for(j=1;j<=n;j++) if(l==a[j]) sc=i
+                  }
+                  next
+                }
+                NR==2 && !sc {
+                  # 最初のデータ行から「数値」っぽい列を後ろから拾う
+                  for(i=NF;i>=1;i--) if($i ~ /^-?[0-9.]+([eE][+-]?[0-9]+)?$/){ sc=i; break }
+                }
+                END{
+                  if(sym && sc) printf "%d,%d\n", sym, sc; else exit 3
+                }' "$1"
+            }
+      
+            # USD: 候補は usd_score/score/value/strength
+            idx=$(pick_cols "data/largecap_strength.csv" "usd_score score value strength") || { echo "pick USD failed"; exit 1; }
+            IFS=, read -r sym_u sc_u <<<"$idx"
+            awk -F',' -v s="$sym_u" -v c="$sc_u" 'NR>1 && $s!=""{print $s","$c}' data/largecap_strength.csv \
+              | sort -t, -k1,1 > /tmp/usd.csv
+      
+            # BTC: 候補は btc_score/score/value/strength
+            idx=$(pick_cols "data/largecap_strength_btc.csv" "btc_score score value strength") || { echo "pick BTC failed"; exit 1; }
+            IFS=, read -r sym_b sc_b <<<"$idx"
+            awk -F',' -v s="$sym_b" -v c="$sc_b" 'NR>1 && $s!=""{print $s","$c}' data/largecap_strength_btc.csv \
+              | sort -t, -k1,1 > /tmp/btc.csv
+      
+            # symbol で外部結合 → "symbol,usd_score,btc_score"
+            join -t, -a 1 -a 2 -e "" -o '0,1.2,2.2' -1 1 -2 1 /tmp/usd.csv /tmp/btc.csv > /tmp/merged.csv || true
+      
+            # 先頭に timestamp を付けて trails_db.csv へ追記
+            awk -F',' -v OFS=',' -v ts="$ts" '{print ts,$0}' /tmp/merged.csv >> "$f"
+            echo "[seed] appended $(wc -l < /tmp/merged.csv) rows at $ts"
+          else
+            echo "[seed] already initialized; skip"
+          fi
+      
+          head -n 3 "$f" | cat -A
+
+
+      
       # 7) daily のときだけ長期トレイルを更新
       - name: Update trails (long-range; daily only)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
