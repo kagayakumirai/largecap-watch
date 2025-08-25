@@ -123,6 +123,19 @@ jobs:
         run: |
           set -euo pipefail
           TRAILS_KEEP_HOURS='${{ toJSON(inputs.trails_keep_hours) }}'
+
+          python plot_score_trails.py \
+            --metric usd \
+            --hist data/trails_db.csv \
+            --hours "$TRAILS_KEEP_HOURS"
+      
+          python plot_score_trails.py \
+            --metric btc \
+            --hist data/trails_db.csv \
+            --hours "$TRAILS_KEEP_HOURS"
+      
+          ls -l --time-style=long-iso data/score_trails_*.png || true
+
       
           # USD 側のトレイルを更新
           python plot_score_trails.py \
