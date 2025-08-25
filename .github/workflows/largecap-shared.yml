@@ -104,12 +104,12 @@ jobs:
           set -euo pipefail
           python compare_strength.py --config config_largecap_compare.effective.yaml
 
-      # 7) daily のときだけ長期トレイルを更新
       - name: Update trails (long-range; daily only)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         shell: bash
         run: |
           set -euo pipefail
+          TRAILS_KEEP_HOURS='${{ toJSON(inputs.trails_keep_hours) }}'
           python plot_score_trails.py \
             --usd-csv  data/largecap_strength.csv \
             --btc-csv  data/largecap_strength_btc.csv \
@@ -117,7 +117,9 @@ jobs:
             --out-btc  data/score_trails_btc.png \
             --out-mix  data/score_trails_usdxbtc.png \
             --trails-file data/trails_db.json \
-            --trails-keep-hours ${{ inputs.trails_keep_hours }}
+            --trails-keep-hours "$TRAILS_KEEP_HOURS"
+
+
 
 
       # 8) 迷子の生成物を data/ に集約（保険）
