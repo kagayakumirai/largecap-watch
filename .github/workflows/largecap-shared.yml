@@ -106,7 +106,7 @@ jobs:
 
       # 7) daily のときだけ長期トレイルを更新
       - name: Update trails (long-range; daily only)
-        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
+        if: ${{ inputs.trails_keep_hours != '0' }}   # ← これで日次だけ実行
         shell: bash
         run: |
           set -euo pipefail
