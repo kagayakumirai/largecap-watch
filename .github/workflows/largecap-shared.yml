@@ -217,10 +217,6 @@ jobs:
           # 生成されたファイル確認（ログ用）
           ls -l --time-style=long-iso data/score_trails_*.png || true
 
-
-
-
-
       # 8) 迷子の生成物を data/ に集約（保険）
       - name: Normalize artifacts into data/
         shell: bash
@@ -231,6 +227,26 @@ jobs:
           for f in largecap_*.png largecap_*.csv score_trails_*.png score_trails_*.csv; do
             [[ -e "$f" ]] && mv -f "$f" data/
           done
+
+      # 生成直後チェック（mtime/ハッシュ）
+      - name: Verify artifacts freshness & diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(data/largecap_usd_vs_btc.png data/largecap_strength.png data/largecap_strength_btc.png data/score_trails_usd.png data/score_trails_btc.png data/score_trails_usdxbtc.png)
+          echo "== mtimes & size =="
+          ls -l --time-style=long-iso "${files[@]}"
+          echo "== current sha256 =="
+          sha256sum "${files[@]}" || true
+          echo "== previous commit sha256 =="
+          for f in "${files[@]}"; do
+            if git show "HEAD:$f" >/tmp/prev 2>/dev/null; then
+              echo "-- $f"; sha256sum /tmp/prev
+            else
+              echo "-- $f : (no previous)"
+            fi
+          done
+
 
       # 9) Discord 送信（data/ 固定 + 鮮度ガード）
       - name: Send charts to Discord
