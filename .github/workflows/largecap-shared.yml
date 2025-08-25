@@ -386,7 +386,7 @@ jobs:
 
       # 9) Discord 送信（data/ 固定 + 鮮度ガード）
       - name: Send charts to Discord
-        if: ${{ inputs.send_discord && env.WEBHOOK != '' }}
+        if: ${{ inputs.send_discord && env.WEBHOOK != '' && (fromJSON(inputs.trails_keep_hours) == 0 || steps.gate.outputs.render == '1') }}
         shell: bash
         run: |
           set -euo pipefail
