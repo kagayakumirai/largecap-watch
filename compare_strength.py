@@ -183,23 +183,26 @@ def plot_trails(side: str, topn: int = 20, fname: str | None = None):
     pad = (x1 - x0) * 0.10
     ax.set_xlim(x0, x1 + pad)
 
-    # ラベル配置
-    y_last_raw = [float(dfp[c].iloc[-1]) for c in label_cols]
-    yr = (float(np.nanmin(dfp.values)), float(np.nanmax(dfp.values)))
-    min_gap = (yr[1] - yr[0]) * 0.03 if yr[1] > yr[0] else 0.05
-    y_last = _spread_labels(y_last_raw, min_gap)
 
-    for (col, y0, y_adj) in zip(label_cols, y_last_raw, y_last):
+    # --- ここから修正後（ずらさない版） ---
+    y_last_raw = [float(dfp[c].iloc[-1]) for c in label_cols]
+
+    for (col, y0) in zip(label_cols, y_last_raw):
         dz = float(dfp[col].iloc[-1] - (dfp[col].iloc[-2] if dfp.shape[0] >= 2 else dfp[col].iloc[-1]))
         arrow = "↑" if dz > 1e-3 else ("↓" if dz < -1e-3 else "→")
-        ax.text(
-            dfp.index[-1] + pad * 0.02, y_adj,
-            f"{col} {arrow} {dz:+.2f}",
-            va="center", fontsize=9,
-            bbox=dict(facecolor="white", alpha=0.65, edgecolor="none", pad=0.4),
-            clip_on=False, zorder=5,
-        )
+        # 現在値 y0 の位置にそのまま描く
+        ax.text(dfp.index[-1] + pad*0.02, y0,
+                f"{col} {arrow} {dz:+.2f}",
+                va="center", fontsize=9,
+                bbox=dict(facecolor="white", alpha=0.65, edgecolor="none", pad=0.4),
+                clip_on=False, zorder=5)
         ax.plot([dfp.index[-1]], [y0], marker="o", markersize=3, zorder=4)
+        label_cols = sorted(label_cols, key=lambda c: float(dfp[c].iloc[-1]))
+
+    # --- ここまで修正後 ---
+
+
+    
 
     # タイトル（JST）/ 目盛り（JST）
     title_ts = dfp.index[-1].tz_convert(JST).strftime("%Y-%m-%d %H:%M JST")
@@ -548,6 +551,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
