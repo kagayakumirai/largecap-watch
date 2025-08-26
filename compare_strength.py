@@ -528,10 +528,10 @@ def main():
     ax.set_xlabel("USD composite (z)")
     ax.set_ylabel("BTC-quoted composite (z)")
     x0, x1 = ax.get_xlim(); y0, y1 = ax.get_ylim()
-    ax.text(x1*0.98, y1*0.98, "Bull / Bull", ha="right", va="top", fontsize=10, alpha=0.7)
-    ax.text(x0*0.02, y1*0.98, "Bear / Bull", ha="left",  va="top", fontsize=10, alpha=0.7)
-    ax.text(x1*0.98, y0*0.02, "Bull / Bear", ha="right", va="bottom", fontsize=10, alpha=0.7)
-    ax.text(x0*0.02, y0*0.02, "Bear / Bear", ha="left",  va="bottom", fontsize=10, alpha=0.7)
+    ax.text(x1*0.98, y1*0.98, "Bull / Bull", ha="right", va="top", fontsize=6, alpha=0.7)
+    ax.text(x0*0.02, y1*0.98, "Bear / Bull", ha="left",  va="top", fontsize=6, alpha=0.7)
+    ax.text(x1*0.98, y0*0.02, "Bull / Bear", ha="right", va="bottom", fontsize=6, alpha=0.7)
+    ax.text(x0*0.02, y0*0.02, "Bear / Bear", ha="left",  va="bottom", fontsize=6, alpha=0.7)
     plt.tight_layout()
     plt.savefig(out_png, dpi=150)
     plt.close()
@@ -551,6 +551,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
