@@ -235,8 +235,6 @@ SYMBOL_TO_ID_FALLBACK = {
     "WSTETH":"wrapped-steth","STETH":"staked-ether",
     "USDT":"tether","USDC":"usd-coin","BUSD":"binance-usd","FDUSD":"first-digital-usd",
     "TUSD":"true-usd","PYUSD":"paypal-usd","WBTC":"wrapped-bitcoin",
-    "LEO":"leo-token","BGB":"bitget-token","OKB":"okb","CRO":"crypto-com-chain",
-    "KCS":"kucoin-shares","GT":"gatechain-token","HT":"huobi-token",
 }
 
 def _parse_listish(s: str | None) -> list[str]:
@@ -551,6 +549,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
