@@ -349,8 +349,7 @@ jobs:
           SHOW='${{ toJSON(inputs.trails_show_hours) }}'   # 例: 720h = 30日
           python plot_score_trails.py --metric usd --hist data/trails_db.csv --hours "$SHOW"
           python plot_score_trails.py --metric btc --hist data/trails_db.csv --hours "$SHOW"
-          ls -l --time-style=long-iso data/score_trails_*.png || true
-
+          COMMON="--hist data/trails_db.csv --hours $SHOW --topn 20 --rank abs --highlight 8 --resample 30min --ema 5 --right-labels --ylim 3.5"
 
 
       # 8) 迷子の生成物を data/ に集約（保険）
