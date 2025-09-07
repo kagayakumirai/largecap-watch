@@ -42,8 +42,8 @@ def main():
                     help="EMAスパン（0/1で無効）")
     ap.add_argument("--right-labels", action="store_true",
                     help="右端に銘柄名と値を注記（凡例の代替）")
-    ap.add_argument("--ylim", type=float, default=3.5, help="y軸の±上限（クリップ）")
-    ap.add_argument("--smooth", type=int, default=1, help="従来の移動平均（互換用・通常は0/1で）")
+    ap.add_argument("--figw", type=float, default=12, help="図の幅（インチ）")
+    ap.add_argument("--figh", type=float, default=4.5, help="図の高さ（インチ）")
     args = ap.parse_args()
 
     path = (HERE / args.hist).resolve()
@@ -117,8 +117,7 @@ def main():
     others = keep[k:]
 
     # 描画
-    plt.figure(figsize=(12, 4.5))
-    ax = plt.gca()
+    fig, ax = plt.subplots(figsize=(args.figw, args.figh))
 
     # ガイドライン ±2, ±1, 0
     for y in (-2, -1, 0, 1, 2):
