@@ -59,24 +59,21 @@ def main():
         df = df[df["timestamp"] >= cutoff].copy()
 
     # ピボット（usd/btc/usdxbtc）
-    if args.metric in ("usd", "btc"):
-        col = "btc_score" if args.metric == "btc" else "usd_score"
-        pv = (
-            df.pivot_table(index="timestamp", columns="symbol", values=col, aggfunc="last")
-              .sort_index()
-        )
-    else:
-        # usdxbtc = usd_score - btc_score（時刻を揃えてから差分）
-        p_usd = df.pivot_table(index="timestamp", columns="symbol",
-                               values="usd_score", aggfunc="last").sort_index()
-        p_btc = df.pivot_table(index="timestamp", columns="symbol",
-                               values="btc_score", aggfunc="last").sort_index()
+    p_usd = df.pivot_table(index="timestamp", columns="symbol",
+                           values="usd_score", aggfunc="last").sort_index()
+    p_btc = df.pivot_table(index="timestamp", columns="symbol",
+                           values="btc_score", aggfunc="last").sort_index()
     
-        idx = p_usd.index.union(p_btc.index)  # 共通の時間軸
+    if args.metric == "usd":
+        pv = p_usd
+    elif args.metric == "btc":
+        pv = p_btc
+    else:
+        idx = p_usd.index.union(p_btc.index)
         u = p_usd.reindex(idx).interpolate(method="time", limit=1, limit_direction="both")
         b = p_btc.reindex(idx).interpolate(method="time", limit=1, limit_direction="both")
-    
         pv = u.sub(b)
+
 
 
     if pv.empty:
