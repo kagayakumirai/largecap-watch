@@ -328,7 +328,7 @@ jobs:
           awk -F',' -v OFS=',' -v ts="$ts" '{print ts,$0}' /tmp/merged.csv >> "$f"
           echo "[append] $(wc -l < /tmp/merged.csv) rows at $ts"
 
-      - name: Compute daily render gate)
+      - name: Compute daily render gate
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         id: gate
         shell: bash
