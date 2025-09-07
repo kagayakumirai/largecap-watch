@@ -475,6 +475,12 @@ def main():
         return "D 弱×弱（様子見）"
     df["quadrant"] = [label(u, b) for u, b in zip(df["usd_score"], df["btc_score"])]
 
+    # ---- Trails 追記（統合：trails_db.csv を正とする）
+    scores_for_trails = df[["symbol","usd_score","btc_score"]].copy()
+    upsert_trails_db(scores_for_trails, hours_keep=24*45)
+
+
+
     # ---- Trails 追記 & 描画
     # latest_usd = df[["symbol","usd_score"]].rename(columns={"usd_score": "score"})
     # latest_btc = df[["symbol","btc_score"]].rename(columns={"btc_score": "score"})
@@ -592,6 +598,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
