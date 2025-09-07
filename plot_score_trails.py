@@ -44,6 +44,9 @@ def main():
                     help="右端に銘柄名と値を注記（凡例の代替）")
     ap.add_argument("--figw", type=float, default=12, help="図の幅（インチ）")
     ap.add_argument("--figh", type=float, default=4.5, help="図の高さ（インチ）")
+    ap.add_argument("--ylim", type=float, default=None, help="y軸の±上限（指定時のみ固定）")
+    ap.add_argument("--figh", type=float, default=4.5, help="図の高さ（inch）")
+
     args = ap.parse_args()
 
     path = (HERE / args.hist).resolve()
