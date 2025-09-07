@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # score_trails（usd/btc/usdxbtc）の可読性を高めた描画版
-# 例:
-#   python plot_score_trails.py --metric usd --hours 168 --topn 20 \
-#     --highlight 8 --resample 30min --ema 5 --rank abs --right-labels --ylim 3.5
 
 import argparse
 from pathlib import Path
@@ -32,7 +29,7 @@ def main():
     ap.add_argument("--hours", type=int, default=168, help="直近N時間に絞る")
     ap.add_argument("--topn", type=int, default=20, help="最終時点の値で上位N本を対象にする")
 
-    # ★ 可読性向上オプション
+    # 可読性オプション
     ap.add_argument("--rank", choices=["pos", "abs"], default="pos",
                     help="上位抽出の基準: pos=値が大きい順, abs=絶対値が大きい順")
     ap.add_argument("--highlight", type=int, default=8,
@@ -65,15 +62,18 @@ def main():
     # pivot 作成
     if args.metric in ("usd", "btc"):
         col = "btc_score" if args.metric == "btc" else "usd_score"
-        pv = (df.pivot_table(index="timestamp", columns="symbol", values=col, aggfunc="last")
-                .sort_index())
+        pv = (
+            df.pivot_table(index="timestamp", columns="symbol", values=col, aggfunc="last")
+              .sort_index()
+        )
     else:
-        # usdxbtc = usd_score - btc_score を行単位で作成（時刻ズレの影響を最小化）
+        # usdxbtc = usd_score - btc_score（行単位で計算してから pivot）
         tmp = df.dropna(subset=["usd_score", "btc_score"]).copy()
         tmp["usdxbtc"] = tmp["usd_score"] - tmp["btc_score"]
-        pv = (tmp.pivot_table(index="timestamp", columns="symbol",
-                              values="usdxbtc", aggfunc="last")
-                .sort_index())
+        pv = (
+            tmp.pivot_table(index="timestamp", columns="symbol", values="usdxbtc", aggfunc="last")
+               .sort_index()
+        )
 
     if pv.empty:
         print("[ERR] pivot result is empty")
@@ -86,24 +86,22 @@ def main():
     # 小さな穴だけつなぐ（過補間は避ける）
     pv = pv.interpolate(method="time", limit=4, limit_area="inside").ffill(limit=2).bfill(limit=2)
 
-    # EMAスムージング（軽くノイズ除去）
+    # EMAスムージング
     if args.ema and args.ema > 1:
         pv = pv.ewm(span=args.ema, adjust=False).mean()
 
-    # （互換）単純移動平均
+    # 単純移動平均（互換）
     if args.smooth and args.smooth > 1:
         pv = pv.rolling(args.smooth, min_periods=1).mean()
 
-    # 最終時点の上位Nを抽出（pos or abs）
+    # 最終時点の上位Nを抽出
     last = pv.iloc[-1].dropna()
     if last.empty:
         print("[ERR] no valid values at last timestamp")
         return
 
-    if args.rank == "abs":
-        last = last.reindex(last.abs().sort_values(ascending=False).index)
-    else:
-        last = last.sort_values(ascending=False)
+    last = last.reindex(last.abs().sort_values(ascending=False).index) if args.rank == "abs" \
+           else last.sort_values(ascending=False)
     keep = list(last.head(args.topn).index)
     pv = pv[keep]
 
@@ -117,25 +115,23 @@ def main():
 
     # ガイドライン ±2, ±1, 0
     for y in (-2, -1, 0, 1, 2):
-        ax.axhline(y, lw=0.8 if y == 0 else 0.6,
-                   ls="--", alpha=0.45 if y else 0.7, zorder=1)
+        ax.axhline(y, lw=0.8 if y == 0 else 0.6, ls="--", alpha=0.45 if y else 0.7, zorder=1)
 
-    # others: グレーで薄く
+    # others: グレー薄
     for sym in others:
         ax.plot(pv.index, pv[sym], lw=0.8, alpha=0.25, color="0.5", zorder=2)
 
-    # topK: 太め＆はっきり
+    # topK: 太め
     for sym in topK:
         ax.plot(pv.index, pv[sym], lw=1.8, alpha=0.95, zorder=3, label=sym)
 
-    # 右端ラベル（凡例の代わり）
+    # 右端ラベル（値は実値、位置だけずらし）
     if args.right_labels:
         x_last = pv.index[-1]
         for i, sym in enumerate(topK):
-            yv = pv[sym].iloc[-1]
-            yv_shift = yv + (0.06 * (len(topK)//2 - i))  # 軽い衝突回避（値は yv のまま表示）
-            txt = f"{sym}  {yv:+.2f}"
-            ax.annotate(txt, xy=(x_last, yv), xytext=(6, 0),
+            yv = float(pv[sym].iloc[-1])
+            yv_shift = yv + (0.06 * (len(topK)//2 - i))
+            ax.annotate(f"{sym}  {yv:+.2f}", xy=(x_last, yv_shift), xytext=(6, 0),
                         textcoords="offset points", va="center",
                         path_effects=[pe.withStroke(linewidth=3, foreground="white")],
                         fontsize=9)
@@ -144,16 +140,15 @@ def main():
     if args.ylim is not None:
         ax.set_ylim(-args.ylim, args.ylim)
     else:
-        # データから対称レンジを自動決定
-        v = pv.to_numpy(np.float64)
-        vmax = np.nanmax(np.abs(v)) if v.size else 1.0
-        ax.set_ylim(-vmax*1.05, vmax*1.05)
+        v = pv.to_numpy(dtype=np.float64)
+        vmax = (np.nanmax(np.abs(v)) if v.size else 1.0) * 1.05
+        ax.set_ylim(-vmax, vmax)
 
     ax.set_xlabel("Time")
     ax.set_ylabel("Score (z)")
     ax.set_title(f"{args.metric.upper()}-score Trails (last {args.hours}h, top {args.topn})")
 
-    # 目盛り調整
+    # 目盛り
     if args.hours >= 72:
         ax.xaxis.set_major_locator(mdates.DayLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
@@ -162,7 +157,6 @@ def main():
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M"))
     plt.setp(ax.get_xticklabels(), rotation=18, ha="right")
 
-    # 凡例は必要なら表示（右端ラベル使用時はOFF推奨）
     if not args.right_labels:
         ax.legend(ncol=6, fontsize=9, frameon=False)
 
