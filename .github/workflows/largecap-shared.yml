@@ -12,13 +12,12 @@ on:
       trails_keep_hours:         # daily だけ >0 を渡す
         type: number
         default: 0
-      trails_show_hours:        # ← 描画に使う時間窓（15m: 48, daily: 720 など）
+      trails_show_hours:         # 描画に使う時間窓（15m: 48, daily: 720 など）
         type: number
         default: 48
-      render_daily_hour:        # ← daily の描画時刻（UTC 時）
+      render_daily_hour:         # daily の描画時刻（UTC 時）
         type: string
         default: '00'
-
     secrets:
       DISCORD_WEBHOOK_URL:
         required: false
@@ -43,7 +42,9 @@ jobs:
           fetch-depth: 0
 
       - name: Sync repo (pull latest)
+        shell: bash
         run: |
+          set -euo pipefail
           git config --global pull.rebase true
           git pull --rebase --autostash || true
 
@@ -61,6 +62,23 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt || pip install -U requests pyyaml pandas matplotlib
 
+      # 3.5) YAML を先にリント（EOF などを早期発見）
+      - name: Lint YAML (show line/col)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys, yaml
+          for p in ("config_largecap.yaml","config_largecap_btc.yaml","config_largecap_compare.yaml"):
+              print("checking", p)
+              try:
+                  with open(p, encoding="utf-8") as f:
+                      yaml.safe_load(f)
+                  print("  OK")
+              except Exception as e:
+                  print("  ERROR:", e)
+                  raise
+          PY
+
       # 4) effective を作成（部品）
       - name: Build effective configs (inject excludes)
         id: eff
@@ -75,6 +93,7 @@ jobs:
       - name: Sanity check excludes (15m)
         shell: bash
         run: |
+          set -euo pipefail
           python - <<'PY'
           import yaml, pathlib
           for p in (
@@ -94,7 +113,9 @@ jobs:
       # 5) 強弱（USD/BTC）
       - name: Run USD strength (15m)
         shell: bash
-        run: python largecap_strength.py --config config_largecap.effective.yaml
+        run: |
+          set -euo pipefail
+          python largecap_strength.py --config config_largecap.effective.yaml
 
       - name: Pause to avoid 429
         shell: bash
@@ -102,7 +123,9 @@ jobs:
 
       - name: Run BTC strength (15m)
         shell: bash
-        run: python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
+        run: |
+          set -euo pipefail
+          python largecap_strength_btc.py --config config_largecap_btc.effective.yaml
 
       # 6) 比較（--trails-* は渡さない）
       - name: Run compare
@@ -119,13 +142,12 @@ jobs:
           set -euo pipefail
           mkdir -p data
           if [[ ! -f data/trails_db.csv ]]; then
-            # ← plot_score_trails.py が参照する列名に合わせる
             echo "timestamp,symbol,usd_score,btc_score" > data/trails_db.csv
             echo "[init] created data/trails_db.csv (empty with header)"
           fi
           head -n 2 data/trails_db.csv || true
-          
-      # (daily only) 履歴CSVが空なら、現在のUSD/BTCスナップショットで種付け
+
+      # (daily only) 履歴CSVが空なら、現在のUSD/BTCスナップショットで種付け（Python版）
       - name: Seed trails history from current snapshots (first run only)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         shell: bash
@@ -133,48 +155,36 @@ jobs:
           set -euo pipefail
           mkdir -p data
           [[ -f data/trails_db.csv ]] || echo "timestamp,symbol,usd_score,btc_score" > data/trails_db.csv
-      
-          # 行数が1（=ヘッダのみ）なら種付け
           if [[ $(wc -l < data/trails_db.csv) -le 1 ]]; then
             cat >/tmp/seed_trails.py <<'PY'
           import pandas as pd, pathlib, datetime as dt
-          
           def pick_score_col(df):
               for c in ['score','usd_score','btc_score','value','strength']:
                   if c in df.columns: return c
               num = df.select_dtypes('number').columns.tolist()
               return num[-1] if num else None
-          
           p_usd = pathlib.Path('data/largecap_strength.csv')
           p_btc = pathlib.Path('data/largecap_strength_btc.csv')
           if not p_usd.exists() or not p_btc.exists():
               raise SystemExit("USD/BTC snapshot csv missing")
-          
-          dfu = pd.read_csv(p_usd)
-          dfb = pd.read_csv(p_btc)
-          
-          cu = pick_score_col(dfu)
-          cb = pick_score_col(dfb)
+          dfu = pd.read_csv(p_usd); dfb = pd.read_csv(p_btc)
+          cu = pick_score_col(dfu); cb = pick_score_col(dfb)
           if not cu or not cb:
               raise SystemExit(f"score columns not found (usd={cu}, btc={cb})")
-          
           a = dfu[['symbol', cu]].rename(columns={cu:'usd_score'})
           b = dfb[['symbol', cb]].rename(columns={cb:'btc_score'})
           m = a.merge(b, on='symbol', how='outer')
-          
           ts = dt.datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'
           m.insert(0, 'timestamp', ts)
-          
           m[['timestamp','symbol','usd_score','btc_score']].to_csv(
               'data/trails_db.csv', mode='a', header=False, index=False
           )
           print(f"[seed] appended {len(m)} rows into data/trails_db.csv at {ts}")
           PY
-          python /tmp/seed_trails.py
+            python /tmp/seed_trails.py
           else
             echo "[seed] trails_db.csv already has rows, skip"
           fi
-      
           head -n 3 data/trails_db.csv || true
 
       # quiet legacy JSON warning (optional)
@@ -185,7 +195,6 @@ jobs:
           set -euo pipefail
           mkdir -p data
           [[ -f data/trails_db.json ]] || echo '{"usd":[],"btc":[]}' > data/trails_db.json
-      
 
       - name: Repair trails history (daily; bash only)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
@@ -194,20 +203,14 @@ jobs:
           set -euo pipefail
           f="data/trails_db.csv"
           mkdir -p data
-      
-          # 無ければ作成
           [[ -f "$f" ]] || echo "timestamp,symbol,usd_score,btc_score" > "$f"
-      
-          # CRLF→LF
-          sed -i 's/\r$//' "$f"
-      
+          sed -i 's/\r$//' "$f"  # CRLF→LF
           # BOM除去
           if head -c3 "$f" | grep -q $'^\xEF\xBB\xBF'; then
             tail -c +4 "$f" > /tmp/_clean && mv /tmp/_clean "$f"
             echo "[repair] removed BOM"
           fi
-      
-          # 区切り子を , に統一（; や TAB の場合）
+          # 区切り子を , に統一
           if ! head -n1 "$f" | grep -q ','; then
             if head -n1 "$f" | grep -q ';'; then
               tr ';' ',' < "$f" > /tmp/_csv && mv /tmp/_csv "$f"
@@ -217,18 +220,14 @@ jobs:
               echo "[repair] replaced TAB -> ,"
             fi
           fi
-      
-          # ヘッダを正規化（timestamp で始まる形に）
+          # ヘッダを正規化
           if ! head -n1 "$f" | grep -q '^timestamp,'; then
             tail -n +2 "$f" > /tmp/_rest || true
             printf "timestamp,symbol,usd_score,btc_score\n" > "$f"
             cat /tmp/_rest >> "$f" || true
             echo "[repair] normalized header"
           fi
-      
-          echo "== head trails_db.csv =="
-          head -n 3 "$f" | cat -A
-
+          echo "== head trails_db.csv =="; head -n 3 "$f" | cat -A
 
       - name: Seed trails history from current snapshots (bash only; first run)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
@@ -236,13 +235,9 @@ jobs:
         run: |
           set -euo pipefail
           f="data/trails_db.csv"
-          # 行数が1（ヘッダのみ）の時だけ実行
           if [[ $(wc -l < "$f") -le 1 ]]; then
             ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-      
-            # ==== USD 側（symbol と スコア列を抽出）====
             pick_cols() {
-              # $1=csv, $2="候補名（空白区切り）"
               awk -F',' -v cand="$2" '
                 NR==1{
                   n=split(cand,a," ");
@@ -250,42 +245,26 @@ jobs:
                     l=tolower($i)
                     if(l=="symbol") sym=i
                     for(j=1;j<=n;j++) if(l==a[j]) sc=i
-                  }
-                  next
+                  } next
                 }
-                NR==2 && !sc {
-                  # 最初のデータ行から「数値」っぽい列を後ろから拾う
-                  for(i=NF;i>=1;i--) if($i ~ /^-?[0-9.]+([eE][+-]?[0-9]+)?$/){ sc=i; break }
-                }
-                END{
-                  if(sym && sc) printf "%d,%d\n", sym, sc; else exit 3
-                }' "$1"
+                NR==2 && !sc { for(i=NF;i>=1;i--) if($i ~ /^-?[0-9.]+([eE][+-]?[0-9]+)?$/){ sc=i; break } }
+                END{ if(sym && sc) printf "%d,%d\n", sym, sc; else exit 3 }' "$1"
             }
-      
-            # USD: 候補は usd_score/score/value/strength
             idx=$(pick_cols "data/largecap_strength.csv" "usd_score score value strength") || { echo "pick USD failed"; exit 1; }
             IFS=, read -r sym_u sc_u <<<"$idx"
             awk -F',' -v s="$sym_u" -v c="$sc_u" 'NR>1 && $s!=""{print $s","$c}' data/largecap_strength.csv \
               | sort -t, -k1,1 > /tmp/usd.csv
-      
-            # BTC: 候補は btc_score/score/value/strength
             idx=$(pick_cols "data/largecap_strength_btc.csv" "btc_score score value strength") || { echo "pick BTC failed"; exit 1; }
             IFS=, read -r sym_b sc_b <<<"$idx"
             awk -F',' -v s="$sym_b" -v c="$sc_b" 'NR>1 && $s!=""{print $s","$c}' data/largecap_strength_btc.csv \
               | sort -t, -k1,1 > /tmp/btc.csv
-      
-            # symbol で外部結合 → "symbol,usd_score,btc_score"
             join -t, -a 1 -a 2 -e "" -o '0,1.2,2.2' -1 1 -2 1 /tmp/usd.csv /tmp/btc.csv > /tmp/merged.csv || true
-      
-            # 先頭に timestamp を付けて trails_db.csv へ追記
             awk -F',' -v OFS=',' -v ts="$ts" '{print ts,$0}' /tmp/merged.csv >> "$f"
             echo "[seed] appended $(wc -l < /tmp/merged.csv) rows at $ts"
           else
             echo "[seed] already initialized; skip"
           fi
-      
           head -n 3 "$f" | cat -A
-
 
       # (daily only) 現在のスナップショットを trails_db.csv に追記（毎時）
       - name: Append current snapshot to trails history (daily; bash only)
@@ -296,10 +275,7 @@ jobs:
           f="data/trails_db.csv"; mkdir -p data
           [[ -f "$f" ]] || echo "timestamp,symbol,usd_score,btc_score" > "$f"
           sed -i 's/\r$//' "$f"
-      
           ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-      
-          # USD の列位置を推定して抽出
           pick() {
             awk -F',' -v cand="$2" '
               NR==1{
@@ -313,17 +289,14 @@ jobs:
               NR==2 && !sc { for(i=NF;i>=1;i--) if($i ~ /^-?[0-9.]+([eE][+-]?[0-9]+)?$/){ sc=i; break } }
               END{ if(sym&&sc) printf "%d,%d\n",sym,sc; else exit 3 }' "$1"
           }
-      
           idx=$(pick "data/largecap_strength.csv" "usd_score score value strength") || { echo "pick USD failed"; exit 1; }
           IFS=, read -r sym_u sc_u <<<"$idx"
           awk -F',' -v s="$sym_u" -v c="$sc_u" 'NR>1 && $s!=""{print $s","$c}' data/largecap_strength.csv \
             | sort -t, -k1,1 > /tmp/usd.csv
-      
           idx=$(pick "data/largecap_strength_btc.csv" "btc_score score value strength") || { echo "pick BTC failed"; exit 1; }
           IFS=, read -r sym_b sc_b <<<"$idx"
           awk -F',' -v s="$sym_b" -v c="$sc_b" 'NR>1 && $s!=""{print $s","$c}' data/largecap_strength_btc.csv \
             | sort -t, -k1,1 > /tmp/btc.csv
-      
           join -t, -a1 -a2 -e "" -o '0,1.2,2.2' -1 1 -2 1 /tmp/usd.csv /tmp/btc.csv > /tmp/merged.csv || true
           awk -F',' -v OFS=',' -v ts="$ts" '{print ts,$0}' /tmp/merged.csv >> "$f"
           echo "[append] $(wc -l < /tmp/merged.csv) rows at $ts"
@@ -339,24 +312,6 @@ jobs:
           if [[ "$HNOW" == "$TARGET" ]]; then echo "render=1" >> "$GITHUB_OUTPUT"; else echo "render=0" >> "$GITHUB_OUTPUT"; fi
           echo "UTC now=$HNOW target=$TARGET"
 
-
-      - name: Lint YAML (show line/col)
-        shell: bash
-        run: |
-          python - <<'PY'
-          import sys, yaml
-          for p in ("config_largecap.yaml","config_largecap_compare.yaml"):
-              print("checking", p)
-              try:
-                  with open(p, encoding="utf-8") as f:
-                      yaml.safe_load(f)
-                  print("  OK")
-              except Exception as e:
-                  print("  ERROR:", e)
-                  raise
-          PY
-
-      
       - name: Render long-range charts (daily gate)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 && steps.gate.outputs.render == '1' }}
         shell: bash
@@ -364,13 +319,14 @@ jobs:
           set -euo pipefail
           SHOW='${{ inputs.trails_show_hours }}'   # 例: 720（整数の“時間”）
           COMMON="--hist data/trails_db.csv --hours $SHOW --topn 20 --rank abs --highlight 8 --resample 30min --ema 5 --right-labels --ylim 3.5"
-
           python plot_score_trails.py --metric usd $COMMON
           python plot_score_trails.py --metric btc $COMMON
-      
-          # 改良版はファイル名に _clean が付きます。パターンを合わせておくと安心。
-          ls -l --time-style=long-iso score_trails_*_clean.png || true
-
+          # 改良版のファイル名(_clean)から互換名を用意
+          U=$(ls -t score_trails_usd*_clean.png | head -1 || true)
+          B=$(ls -t score_trails_btc*_clean.png | head -1 || true)
+          [[ -n "$U" ]] && cp -f "$U" score_trails_usd.png
+          [[ -n "$B" ]] && cp -f "$B" score_trails_btc.png
+          ls -l --time-style=long-iso score_trails_*_clean.png score_trails_usd.png score_trails_btc.png || true
 
       # 8) 迷子の生成物を data/ に集約（保険）
       - name: Normalize artifacts into data/
@@ -389,10 +345,8 @@ jobs:
         run: |
           set -euo pipefail
           files=(data/largecap_usd_vs_btc.png data/largecap_strength.png data/largecap_strength_btc.png data/score_trails_usd.png data/score_trails_btc.png data/score_trails_usdxbtc.png)
-          echo "== mtimes & size =="
-          ls -l --time-style=long-iso "${files[@]}"
-          echo "== current sha256 =="
-          sha256sum "${files[@]}" || true
+          echo "== mtimes & size =="; ls -l --time-style=long-iso "${files[@]}"
+          echo "== current sha256 =="; sha256sum "${files[@]}" || true
           echo "== previous commit sha256 =="
           for f in "${files[@]}"; do
             if git show "HEAD:$f" >/tmp/prev 2>/dev/null; then
@@ -402,16 +356,14 @@ jobs:
             fi
           done
 
-
       # 9) Discord 送信（data/ 固定 + 鮮度ガード）
       - name: Send charts to Discord
-        if: ${{ inputs.send_discord && env.WEBHOOK != '' && (fromJSON(inputs.trails_keep_hours) == 0 || steps.gate.outputs.render == '1') }}
+        if: ${{ success() && inputs.send_discord && env.WEBHOOK != '' && (fromJSON(inputs.trails_keep_hours) == 0 || steps.gate.outputs.render == '1') }}
         shell: bash
         run: |
           set -euo pipefail
           WEBHOOK="$(printf '%s' "$WEBHOOK" | tr -d '\r\n' | sed -e 's/^ *//' -e 's/ *$//')"
-
-          files=( 
+          files=(
             data/largecap_usd_vs_btc.png
             data/score_trails_usd.png
             data/score_trails_btc.png
@@ -419,15 +371,12 @@ jobs:
             data/largecap_strength_btc.png
             data/score_trails_usdxbtc.png
           )
-
           now=$(date +%s); max_age=$((60*60))
           for f in "${files[@]}"; do
             [[ -f "$f" ]] || { echo "missing $f"; exit 1; }
             m=$(stat -c %Y "$f"); (( now-m <= max_age )) || { echo "stale $f"; exit 1; }
           done
-
           payload="$(jq -n --arg content "LargeCap 15m — $(date -u +'%Y-%m-%d %H:%M UTC')" '{content:$content}')"
-
           curl --fail-with-body -sS \
             -F "payload_json=${payload}" \
             -F "file1=@${files[0]};type=image/png" \
