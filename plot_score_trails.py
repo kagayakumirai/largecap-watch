@@ -69,7 +69,7 @@ def main():
     elif args.metric == "btc":
         pv = p_btc
     else:
-        # usdxbtc を行単位で作成（同一行の usd/btc を使うのでズレが出ない）
+        # 行単位で usdxbtc を作ってからピボット
         tmp = df.dropna(subset=["usd_score", "btc_score"]).copy()
         tmp["usdxbtc"] = tmp["usd_score"] - tmp["btc_score"]
     
@@ -77,11 +77,17 @@ def main():
                               values="usdxbtc", aggfunc="last")
                 .sort_index())
     
-        # （任意）疎なときの見栄えを安定させる
-        if args.resample:
-            pv = pv.resample(args.resample).median()
-        # 小さな穴だけ前方補間（線の断裂防止；過補間を避けるため limit を小さく）
-        pv = pv.ffill(limit=2)
+        # 1) 等間隔グリッド化（指定がなければ 30min に）
+        freq = args.resample if args.resample else "30min"
+        pv = pv.resample(freq).median()
+    
+        # 2) 小さな穴をつなぐ（時間補間＋前後詰め）
+        pv = pv.interpolate(method="time", limit=4, limit_area="inside")
+        pv = pv.ffill(limit=2).bfill(limit=2)
+    
+        # 3) カバレッジが低すぎる銘柄は落とす（残NaNが多い列の除外）
+        cov = pv.notna().mean()
+        pv = pv.loc[:, cov >= 0.6]   # 60% 以上データがある列だけ残す
 
 
 
