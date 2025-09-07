@@ -69,10 +69,20 @@ def main():
     elif args.metric == "btc":
         pv = p_btc
     else:
-        idx = p_usd.index.union(p_btc.index)
-        u = p_usd.reindex(idx).interpolate(method="time", limit=1, limit_direction="both")
-        b = p_btc.reindex(idx).interpolate(method="time", limit=1, limit_direction="both")
-        pv = u.sub(b)
+        # usdxbtc を行単位で作成（同一行の usd/btc を使うのでズレが出ない）
+        tmp = df.dropna(subset=["usd_score", "btc_score"]).copy()
+        tmp["usdxbtc"] = tmp["usd_score"] - tmp["btc_score"]
+    
+        pv = (tmp.pivot_table(index="timestamp", columns="symbol",
+                              values="usdxbtc", aggfunc="last")
+                .sort_index())
+    
+        # （任意）疎なときの見栄えを安定させる
+        if args.resample:
+            pv = pv.resample(args.resample).median()
+        # 小さな穴だけ前方補間（線の断裂防止；過補間を避けるため limit を小さく）
+        pv = pv.ffill(limit=2)
+
 
 
 
