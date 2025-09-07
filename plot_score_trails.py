@@ -54,15 +54,17 @@ def main():
         cutoff = df["timestamp"].max() - pd.Timedelta(hours=args.hours)
         df = df[df["timestamp"] >= cutoff].copy()
 
-    if args.metric in ("usd","btc"):
-        col = "btc_score" if args.metric == "btc" else "usd_score"
-        pv = (df.pivot_table(index="timestamp", columns="symbol", values=col, aggfunc="last")
-                .sort_index())
-    else:
-        # usdxbtc = usd_score - btc_score（同じタイムスタンプでの差）
-        p_usd = df.pivot_table(index="timestamp", columns="symbol", values="usd_score", aggfunc="last")
-        p_btc = df.pivot_table(index="timestamp", columns="symbol", values="btc_score", aggfunc="last")
-        pv = (p_usd - p_btc).sort_index()
+   if args.metric in ("usd","btc"):
+       col = "btc_score" if args.metric == "btc" else "usd_score"
+       pv = df.pivot_table(... values=col ...).sort_index()
+   else:
+       # usdxbtc = usd_score - btc_score
+       p_usd = df.pivot_table(... values="usd_score" ...)
+       p_btc = df.pivot_table(... values="btc_score" ...)
+       pv = (p_usd - p_btc).sort_index()
+
++ try: pv = pv.resample(args.resample).median()  # 失敗しても落とさない
++ except Exception: pass
 
 
     # リサンプリング（中央値）
