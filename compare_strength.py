@@ -26,41 +26,52 @@ import pandas as pd
 
 TRAILS_DB = Path("data/trails_db.csv")
 
+# compare_strength.py にある upsert_trails_db を丸ごと置き換え
+from pathlib import Path
+import pandas as pd
+
+TRAILS_DB = Path("data/trails_db.csv")
+
 def upsert_trails_db(df_scores: pd.DataFrame, hours_keep: int = 24*45) -> Path:
     """
     df_scores: 必須列 ['symbol','usd_score','btc_score']
-    同一 (timestamp,symbol) は最後を採用。保持期間は hours_keep。
+    同一 (timestamp, symbol) は最後を採用。保持期間は hours_keep。
+    すべて tz-aware(UTC) に統一。
     """
     TRAILS_DB.parent.mkdir(parents=True, exist_ok=True)
 
-    # 追記用タイムスタンプ（15分バケツに合わせて固定）
-    run_ts = pd.Timestamp.utcnow().floor("15min").replace(tzinfo=None)
+    # 15分バケツに揃えた UTC の tz-aware 時刻
+    run_ts = pd.Timestamp.now(tz="UTC").floor("15min")
 
-    add = df_scores[["symbol","usd_score","btc_score"]].copy()
+    # 追記行を作成（UTC付きタイムスタンプを入れる）
+    add = df_scores[["symbol", "usd_score", "btc_score"]].copy()
     add.insert(0, "timestamp", run_ts)
 
+    # 既存CSVを読み、timestampをUTC付きに正規化
     if TRAILS_DB.exists():
-        hist = pd.read_csv(TRAILS_DB, parse_dates=["timestamp"])
+        hist = pd.read_csv(TRAILS_DB)
+        hist["timestamp"] = pd.to_datetime(hist["timestamp"], utc=True)
     else:
         hist = pd.DataFrame(columns=["timestamp","symbol","usd_score","btc_score"])
 
+    # 連結 → 型そろえ
     merged = pd.concat([hist, add], ignore_index=True)
+    merged["timestamp"] = pd.to_datetime(merged["timestamp"], utc=True)
+    merged = merged.dropna(subset=["timestamp", "symbol"])
 
-    # 型揃え & ソート
-    merged["timestamp"] = pd.to_datetime(merged["timestamp"], utc=False, errors="coerce")
-    merged = merged.dropna(subset=["timestamp","symbol"])
-
-    # 保持期間（例：45 日 ≒ 1080 時間）
+    # 保持期間で間引き
     cutoff = run_ts - pd.Timedelta(hours=hours_keep)
     merged = merged[merged["timestamp"] >= cutoff]
 
     # 同一 (timestamp, symbol) は最後を残す
-    merged.sort_values(["timestamp","symbol"], inplace=True)
-    merged = merged.drop_duplicates(["timestamp","symbol"], keep="last")
+    merged.sort_values(["timestamp", "symbol"], inplace=True)
+    merged = merged.drop_duplicates(["timestamp", "symbol"], keep="last")
 
+    # 保存（UTC付きのまま）
     merged.to_csv(TRAILS_DB, index=False)
     print(f"[TRAILS] upserted into {TRAILS_DB}, last={merged['timestamp'].max()}")
     return TRAILS_DB
+
 
 
 
@@ -598,6 +609,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
