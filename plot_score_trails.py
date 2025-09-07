@@ -66,11 +66,11 @@ def main():
               .sort_index()
         )
     else:
-        # usdxbtc = usd_score - btc_score（同一タイムスタンプでの差）
-        lam = 0.3  # 好みで 0.2〜0.5
-        p_usd = df.pivot_table(index="timestamp", columns="symbol", values="usd_score", aggfunc="last")
-        p_btc = df.pivot_table(index="timestamp", columns="symbol", values="btc_score", aggfunc="last")
-        pv = p_usd.sub(p_btc).sort_index()  # ← fill_value を外す
+        # usdxbtc = usd_score - btc_score（fill_value は使わない）
+        p_usd = df.pivot_table(index="timestamp", columns="symbol", values="usd_score", aggfunc="last").sort_index()
+        p_btc = df.pivot_table(index="timestamp", columns="symbol", values="btc_score", aggfunc="last").sort_index()
+        pv = p_usd.sub(p_btc).sort_index()
+
 
     if pv.empty:
         print("[ERR] pivot result is empty")
