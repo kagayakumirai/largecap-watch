@@ -20,6 +20,50 @@ from zoneinfo import ZoneInfo
 JST = ZoneInfo("Asia/Tokyo")
 TRAILS_DIR = Path("data"); TRAILS_DIR.mkdir(parents=True, exist_ok=True)
 
+# compare_strength.py の import 付近に追加
+from pathlib import Path
+import pandas as pd
+
+TRAILS_DB = Path("data/trails_db.csv")
+
+def upsert_trails_db(df_scores: pd.DataFrame, hours_keep: int = 24*45) -> Path:
+    """
+    df_scores: 必須列 ['symbol','usd_score','btc_score']
+    同一 (timestamp,symbol) は最後を採用。保持期間は hours_keep。
+    """
+    TRAILS_DB.parent.mkdir(parents=True, exist_ok=True)
+
+    # 追記用タイムスタンプ（15分バケツに合わせて固定）
+    run_ts = pd.Timestamp.utcnow().floor("15min").replace(tzinfo=None)
+
+    add = df_scores[["symbol","usd_score","btc_score"]].copy()
+    add.insert(0, "timestamp", run_ts)
+
+    if TRAILS_DB.exists():
+        hist = pd.read_csv(TRAILS_DB, parse_dates=["timestamp"])
+    else:
+        hist = pd.DataFrame(columns=["timestamp","symbol","usd_score","btc_score"])
+
+    merged = pd.concat([hist, add], ignore_index=True)
+
+    # 型揃え & ソート
+    merged["timestamp"] = pd.to_datetime(merged["timestamp"], utc=False, errors="coerce")
+    merged = merged.dropna(subset=["timestamp","symbol"])
+
+    # 保持期間（例：45 日 ≒ 1080 時間）
+    cutoff = run_ts - pd.Timedelta(hours=hours_keep)
+    merged = merged[merged["timestamp"] >= cutoff]
+
+    # 同一 (timestamp, symbol) は最後を残す
+    merged.sort_values(["timestamp","symbol"], inplace=True)
+    merged = merged.drop_duplicates(["timestamp","symbol"], keep="last")
+
+    merged.to_csv(TRAILS_DB, index=False)
+    print(f"[TRAILS] upserted into {TRAILS_DB}, last={merged['timestamp'].max()}")
+    return TRAILS_DB
+
+
+
 # ---------- trails ----------
 def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Path:
     """
@@ -548,6 +592,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
