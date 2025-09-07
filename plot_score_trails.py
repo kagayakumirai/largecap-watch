@@ -7,6 +7,7 @@
 
 import argparse
 from pathlib import Path
+import numpy as np
 import pandas as pd
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -45,7 +46,7 @@ def main():
     ap.add_argument("--figw", type=float, default=12, help="図の幅（インチ）")
     ap.add_argument("--figh", type=float, default=4.5, help="図の高さ（インチ）")
     ap.add_argument("--ylim", type=float, default=None, help="y軸の±上限（指定時のみ固定）")
-    ap.add_argument("--figh", type=float, default=4.5, help="図の高さ（inch）")
+    ap.add_argument("--smooth", type=int, default=1, help="単純移動平均ウィンドウ（0/1で無効）")
 
     args = ap.parse_args()
 
@@ -61,41 +62,29 @@ def main():
         cutoff = df["timestamp"].max() - pd.Timedelta(hours=args.hours)
         df = df[df["timestamp"] >= cutoff].copy()
 
-    # ... pivot に入る直前の分岐
+    # pivot 作成
     if args.metric in ("usd", "btc"):
         col = "btc_score" if args.metric == "btc" else "usd_score"
         pv = (df.pivot_table(index="timestamp", columns="symbol", values=col, aggfunc="last")
                 .sort_index())
     else:
-        # usdxbtc = usd_score - btc_score を“行で”作る（時刻ズレの影響を無くす）
-        tmp = df.dropna(subset=["usd_score","btc_score"]).copy()
+        # usdxbtc = usd_score - btc_score を行単位で作成（時刻ズレの影響を最小化）
+        tmp = df.dropna(subset=["usd_score", "btc_score"]).copy()
         tmp["usdxbtc"] = tmp["usd_score"] - tmp["btc_score"]
-    
         pv = (tmp.pivot_table(index="timestamp", columns="symbol",
                               values="usdxbtc", aggfunc="last")
                 .sort_index())
-    
-    # 以降は共通処理
-    if args.resample:
-        pv = pv.resample(args.resample).median()
-    
-    # 小さな穴だけつなぐ（過補間は避ける）
-    pv = pv.interpolate(method="time", limit=4, limit_area="inside").ffill(limit=2).bfill(limit=2)
-
-
-
-
 
     if pv.empty:
         print("[ERR] pivot result is empty")
         return
 
-    # リサンプリング（中央値）— DatetimeIndex 前提。失敗しても落とさない。
+    # リサンプリング（中央値）
     if args.resample:
-        try:
-            pv = pv.resample(args.resample).median()
-        except Exception:
-            pass
+        pv = pv.resample(args.resample).median()
+
+    # 小さな穴だけつなぐ（過補間は避ける）
+    pv = pv.interpolate(method="time", limit=4, limit_area="inside").ffill(limit=2).bfill(limit=2)
 
     # EMAスムージング（軽くノイズ除去）
     if args.ema and args.ema > 1:
@@ -107,6 +96,10 @@ def main():
 
     # 最終時点の上位Nを抽出（pos or abs）
     last = pv.iloc[-1].dropna()
+    if last.empty:
+        print("[ERR] no valid values at last timestamp")
+        return
+
     if args.rank == "abs":
         last = last.reindex(last.abs().sort_values(ascending=False).index)
     else:
@@ -140,15 +133,22 @@ def main():
         x_last = pv.index[-1]
         for i, sym in enumerate(topK):
             yv = pv[sym].iloc[-1]
-            # 軽い衝突回避
-            yv_shift = yv + (0.06 * (len(topK)//2 - i))
+            yv_shift = yv + (0.06 * (len(topK)//2 - i))  # 軽い衝突回避（値は yv のまま表示）
             txt = f"{sym}  {yv:+.2f}"
             ax.annotate(txt, xy=(x_last, yv), xytext=(6, 0),
                         textcoords="offset points", va="center",
                         path_effects=[pe.withStroke(linewidth=3, foreground="white")],
                         fontsize=9)
 
-    ax.set_ylim(-args.ylim, args.ylim)
+    # yレンジ
+    if args.ylim is not None:
+        ax.set_ylim(-args.ylim, args.ylim)
+    else:
+        # データから対称レンジを自動決定
+        v = pv.to_numpy(np.float64)
+        vmax = np.nanmax(np.abs(v)) if v.size else 1.0
+        ax.set_ylim(-vmax*1.05, vmax*1.05)
+
     ax.set_xlabel("Time")
     ax.set_ylabel("Score (z)")
     ax.set_title(f"{args.metric.upper()}-score Trails (last {args.hours}h, top {args.topn})")
