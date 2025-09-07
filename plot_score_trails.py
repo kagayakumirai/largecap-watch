@@ -22,8 +22,9 @@ def load_hist(path: Path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--hist", default="history_scores.csv")
-    ap.add_argument("--metric", choices=["usd", "btc"], default="btc",
-                    help="描画するスコア（usd/btc）")
+    ap.add_argument("--metric", choices=["usd", "btc", "usdxbtc"], default="btc",
+                     help="描画するスコア（usd/btc/usdxbtc）")
+    
     ap.add_argument("--hours", type=int, default=168, help="直近N時間に絞る")
     ap.add_argument("--topn", type=int, default=20, help="最終時点の値で上位N本を対象にする")
     # ★ 可読性向上オプション
@@ -53,13 +54,24 @@ def main():
         cutoff = df["timestamp"].max() - pd.Timedelta(hours=args.hours)
         df = df[df["timestamp"] >= cutoff].copy()
 
-    col = "btc_score" if args.metric == "btc" else "usd_score"
-    pv = (df.pivot_table(index="timestamp", columns="symbol", values=col, aggfunc="last")
-            .sort_index())
+    if args.metric in ("usd","btc"):
+        col = "btc_score" if args.metric == "btc" else "usd_score"
+        pv = (df.pivot_table(index="timestamp", columns="symbol", values=col, aggfunc="last")
+                .sort_index())
+    else:
+        # usdxbtc = usd_score - btc_score（同じタイムスタンプでの差）
+        p_usd = df.pivot_table(index="timestamp", columns="symbol", values="usd_score", aggfunc="last")
+        p_btc = df.pivot_table(index="timestamp", columns="symbol", values="btc_score", aggfunc="last")
+        pv = (p_usd - p_btc).sort_index()
+
 
     # リサンプリング（中央値）
     if args.resample:
-        pv = pv.resample(args.resample).median()
+        # DatetimeIndex 前提。念のため try にして落ちないように。
+        try:
+            pv = pv.resample(args.resample).median()
+        except Exception:
+            pass
 
     # EMAスムージング（軽くノイズ除去）
     if args.ema and args.ema > 1:
