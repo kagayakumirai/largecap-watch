@@ -150,12 +150,12 @@ jobs:
           python plot_score_trails.py --metric usdxbtc $COMMON
       
           # _clean を従来名に揃える（後段の Verify/送信がこの名前を見る）
-          U=$(ls -t score_trails_usd*_clean.png     | head -1 || true)
-          B=$(ls -t score_trails_btc*_clean.png     | head -1 || true)
-          X=$(ls -t score_trails_usdxbtc*_clean.png | head -1 || true)
-          [[ -n "$U" ]] && cp -f "$U" score_trails_usd.png
-          [[ -n "$B" ]] && cp -f "$B" score_trails_btc.png
-          [[ -n "$X" ]] && cp -f "$X" score_trails_usdxbtc.png
+          U=$(ls -t score_trails_usd_*_clean.png     2>/dev/null | head -1 || true)
+          B=$(ls -t score_trails_btc_*_clean.png     2>/dev/null | head -1 || true)
+          X=$(ls -t score_trails_usdxbtc_*_clean.png 2>/dev/null | head -1 || true)
+          [[ -n "$U" ]] && cp -f -- "$U" score_trails_usd.png
+          [[ -n "$B" ]] && cp -f -- "$B" score_trails_btc.png
+          [[ -n "$X" ]] && cp -f -- "$X" score_trails_usdxbtc.png
       
           ls -l --time-style=long-iso score_trails_*_clean.png score_trails_*.png || true
 
@@ -347,10 +347,13 @@ jobs:
           python plot_score_trails.py --metric usd $COMMON
           python plot_score_trails.py --metric btc $COMMON
           # 改良版のファイル名(_clean)から互換名を用意
-          U=$(ls -t score_trails_usd*_clean.png | head -1 || true)
-          B=$(ls -t score_trails_btc*_clean.png | head -1 || true)
-          [[ -n "$U" ]] && cp -f "$U" score_trails_usd.png
-          [[ -n "$B" ]] && cp -f "$B" score_trails_btc.png
+          U=$(ls -t score_trails_usd_*_clean.png 2>/dev/null | head -1 || true)
+          B=$(ls -t score_trails_btc_*_clean.png 2>/dev/null | head -1 || true)
+          X=$(ls -t score_trails_usdxbtc_*_clean.png 2>/dev/null | head -1 || true)
+          
+          [[ -n "$U" ]] && cp -f -- "$U" score_trails_usd.png
+          [[ -n "$B" ]] && cp -f -- "$B" score_trails_btc.png
+          [[ -n "$X" ]] && cp -f -- "$X" score_trails_usdxbtc.png
           ls -l --time-style=long-iso score_trails_*_clean.png score_trails_usd.png score_trails_btc.png || true
 
       # 8) 迷子の生成物を data/ に集約（保険）
