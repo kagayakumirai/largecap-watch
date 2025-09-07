@@ -67,6 +67,7 @@ def main():
         )
     else:
         # usdxbtc = usd_score - btc_score（同一タイムスタンプでの差）
+        lam = 0.3  # 好みで 0.2〜0.5
         p_usd = df.pivot_table(index="timestamp", columns="symbol", values="usd_score", aggfunc="last")
         p_btc = df.pivot_table(index="timestamp", columns="symbol", values="btc_score", aggfunc="last")
         pv = (p_usd.add(p_btc, fill_value=0) - lam * (p_usd.sub(p_btc, fill_value=0).abs())).sort_index()
