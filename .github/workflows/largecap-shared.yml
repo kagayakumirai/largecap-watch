@@ -328,7 +328,7 @@ jobs:
           awk -F',' -v OFS=',' -v ts="$ts" '{print ts,$0}' /tmp/merged.csv >> "$f"
           echo "[append] $(wc -l < /tmp/merged.csv) rows at $ts"
 
-      - name: Compute daily render gate
+      - name: Compute daily render gate)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         id: gate
         shell: bash
@@ -339,17 +339,20 @@ jobs:
           if [[ "$HNOW" == "$TARGET" ]]; then echo "render=1" >> "$GITHUB_OUTPUT"; else echo "render=0" >> "$GITHUB_OUTPUT"; fi
           echo "UTC now=$HNOW target=$TARGET"
 
-
-
+      
       - name: Render long-range charts (daily gate)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 && steps.gate.outputs.render == '1' }}
         shell: bash
         run: |
           set -euo pipefail
-          SHOW='${{ toJSON(inputs.trails_show_hours) }}'   # 例: 720h = 30日
-          python plot_score_trails.py --metric usd --hist data/trails_db.csv --hours "$SHOW"
-          python plot_score_trails.py --metric btc --hist data/trails_db.csv --hours "$SHOW"
+          SHOW='${{ inputs.trails_show_hours }}'   # 例: 720（整数の“時間”）
           COMMON="--hist data/trails_db.csv --hours $SHOW --topn 20 --rank abs --highlight 8 --resample 30min --ema 5 --right-labels --ylim 3.5"
+
+          python plot_score_trails.py --metric usd $COMMON
+          python plot_score_trails.py --metric btc $COMMON
+      
+          # 改良版はファイル名に _clean が付きます。パターンを合わせておくと安心。
+          ls -l --time-style=long-iso score_trails_*_clean.png || true
 
 
       # 8) 迷子の生成物を data/ に集約（保険）
