@@ -357,6 +357,32 @@ jobs:
           [[ -n "$X" ]] && cp -f -- "$X" score_trails_usdxbtc.png
           ls -l --time-style=long-iso score_trails_*_clean.png score_trails_usd.png score_trails_btc.png || true
 
+      - name: Render monthly (30d) trails with daily aggregation (daily gate)
+        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 && steps.gate.outputs.render == '1' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          H=720        # 30日＝720h
+          TOP=12       # 見やすく少なめ
+          COMMON="--hist data/trails_db.csv --hours $H --topn $TOP \
+            --rank abs --highlight 6 --resample 1d --ema 0 --right-labels --ylim 2.0"
+      
+          python plot_score_trails.py --metric usd     $COMMON
+          python plot_score_trails.py --metric btc     $COMMON
+          python plot_score_trails.py --metric usdxbtc $COMMON
+      
+          # 出力ファイル（plot側は *_h{H}_top{TOP}_clean.png）を固定名へコピー
+          U="score_trails_usd_h${H}_top${TOP}_clean.png"
+          B="score_trails_btc_h${H}_top${TOP}_clean.png"
+          X="score_trails_usdxbtc_h${H}_top${TOP}_clean.png"
+      
+          [[ -f "$U" ]] && cp -f -- "$U" data/score_trails_usd_daily30.png
+          [[ -f "$B" ]] && cp -f -- "$B" data/score_trails_btc_daily30.png
+          [[ -f "$X" ]] && cp -f -- "$X" data/score_trails_usdxbtc_daily30.png
+      
+          ls -l --time-style=long-iso data/score_trails_*daily30.png || true
+
+
       # 8) 迷子の生成物を data/ に集約（保険）
       - name: Normalize artifacts into data/
         shell: bash
