@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # USD建て × BTC建て 強弱を比較（ログ多め＆保存先固定）
+# 2025/9/7 これで compare は “計算＆散布図＆CSV” だけになり、
+# トレイル画像は plot_score_trails.py が単独で担当します。
 
 import os, ast, re, math, sys, time, random, json
 import argparse
@@ -430,27 +432,24 @@ def main():
     df["quadrant"] = [label(u, b) for u, b in zip(df["usd_score"], df["btc_score"])]
 
     # ---- Trails 追記 & 描画
-    latest_usd = df[["symbol","usd_score"]].rename(columns={"usd_score": "score"})
-    latest_btc = df[["symbol","btc_score"]].rename(columns={"btc_score": "score"})
-    trail_csv_usd = persist_trails("usd", latest_usd)
-    trail_csv_btc = persist_trails("btc", latest_btc)
-    print("[TRAILS] appended:", trail_csv_usd, trail_csv_btc)
-    
-    plot_trails("usd", topn=20, fname="score_trails_usd.png")
-    plot_trails("btc", topn=20, fname="score_trails_btc.png")
+    # latest_usd = df[["symbol","usd_score"]].rename(columns={"usd_score": "score"})
+    # latest_btc = df[["symbol","btc_score"]].rename(columns={"btc_score": "score"})
+    # trail_csv_usd = persist_trails("usd", latest_usd)
+    # trail_csv_btc = persist_trails("btc", latest_btc)
+    # print("[TRAILS] appended:", trail_csv_usd, trail_csv_btc)   
+    # plot_trails("usd", topn=20, fname="score_trails_usd.png")
+    # plot_trails("btc", topn=20, fname="score_trails_btc.png")
 
     # ==== USD×BTC (合成) のトレイル ====
-    lam = float(cfg.get("compare_penalty_lambda", 0.3))  # 既存の compare λ を流用
-    latest_combo = df[["symbol"]].copy()
-    latest_combo["score"] = (
-        df["usd_score"] + df["btc_score"] - lam * (df["usd_score"] - df["btc_score"]).abs()
-    )
-    
+    # lam = float(cfg.get("compare_penalty_lambda", 0.3))  # 既存の compare λ を流用
+    # latest_combo = df[["symbol"]].copy()
+    # latest_combo["score"] = (
+    #    df["usd_score"] + df["btc_score"] - lam * (df["usd_score"] - df["btc_score"]).abs()
+    # )
     # CSV 追記（短期：168h保持）
-    persist_trails("usdxbtc", latest_combo, hours_keep=168)
-    
+    # persist_trails("usdxbtc", latest_combo, hours_keep=168)
     # 折れ線を出力（短期）
-    plot_trails("usdxbtc", topn=20, fname="score_trails_usdxbtc.png")
+    # plot_trails("usdxbtc", topn=20, fname="score_trails_usdxbtc.png")
 
 
     # ---- 出力
@@ -549,6 +548,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
