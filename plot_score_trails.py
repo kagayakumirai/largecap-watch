@@ -66,10 +66,10 @@ def main():
               .sort_index()
         )
     else:
-        # usdxbtc = usd_score - btc_score（fill_value は使わない）
-        p_usd = df.pivot_table(index="timestamp", columns="symbol", values="usd_score", aggfunc="last").sort_index()
-        p_btc = df.pivot_table(index="timestamp", columns="symbol", values="btc_score", aggfunc="last").sort_index()
-        pv = p_usd.sub(p_btc).sort_index()
+        idx = p_usd.index.union(p_btc.index)
+        u = p_usd.reindex(idx).interpolate(method="time", limit=1, limit_direction="both")
+        b = p_btc.reindex(idx).interpolate(method="time", limit=1, limit_direction="both")
+        pv = u.sub(b)
 
 
     if pv.empty:
