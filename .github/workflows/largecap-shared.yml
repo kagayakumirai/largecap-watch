@@ -141,13 +141,13 @@ jobs:
         run: |
           set -euo pipefail
           SHOW=48
-          COMMON="--hist data/trails_db.csv --hours $SHOW \
-            --topn 16 --rank abs --highlight 6 \
-            --resample 1h --ema 3 --right-labels --ylim 3.0"
-      
-          python plot_score_trails.py --metric usd     $COMMON
-          python plot_score_trails.py --metric btc     $COMMON
-          python plot_score_trails.py --metric usdxbtc $COMMON
+          COMMON_BASE="--hist data/trails_db.csv --hours $SHOW --topn 16 --rank abs --highlight 6 --right-labels"
+          COMMON_USD_BTC="$COMMON_BASE --resample 1h --ema 3 --ylim 3.0"
+          COMMON_USDXBTC="$COMMON_BASE --resample 30min --ema 2 --ylim 1.6"   # ← ここだけ“背高”設定
+
+          python plot_score_trails.py --metric usd     $COMMON_USD_BTC
+          python plot_score_trails.py --metric btc     $COMMON_USD_BTC
+          python plot_score_trails.py --metric usdxbtc $COMMON_USDXBTC
       
           # _clean を従来名に揃える（後段の Verify/送信がこの名前を見る）
           U=$(ls -t score_trails_usd_*_clean.png     2>/dev/null | head -1 || true)
