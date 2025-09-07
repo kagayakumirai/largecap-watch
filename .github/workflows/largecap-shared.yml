@@ -134,6 +134,31 @@ jobs:
           set -euo pipefail
           python compare_strength.py --config config_largecap_compare.effective.yaml
 
+      #A) 15分ランでも3枚描く
+      - name: Render short-range trails (15m; single source)
+        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHOW=48
+          COMMON="--hist data/trails_db.csv --hours $SHOW \
+            --topn 16 --rank abs --highlight 6 \
+            --resample 1H --ema 3 --right-labels --ylim 3.0"
+      
+          python plot_score_trails.py --metric usd     $COMMON
+          python plot_score_trails.py --metric btc     $COMMON
+          python plot_score_trails.py --metric usdxbtc $COMMON
+      
+          # _clean を従来名に揃える（後段の Verify/送信がこの名前を見る）
+          U=$(ls -t score_trails_usd*_clean.png     | head -1 || true)
+          B=$(ls -t score_trails_btc*_clean.png     | head -1 || true)
+          X=$(ls -t score_trails_usdxbtc*_clean.png | head -1 || true)
+          [[ -n "$U" ]] && cp -f "$U" score_trails_usd.png
+          [[ -n "$B" ]] && cp -f "$B" score_trails_btc.png
+          [[ -n "$X" ]] && cp -f "$X" score_trails_usdxbtc.png
+      
+          ls -l --time-style=long-iso score_trails_*_clean.png score_trails_*.png || true
+
       # (daily only) 履歴ファイルが無ければ正しいヘッダーで初期化
       - name: Ensure trails history exists (daily)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
