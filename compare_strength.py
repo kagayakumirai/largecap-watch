@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # USD建て × BTC建て 強弱を比較（ログ多め＆保存先固定）
-# 2025/9/7 これで compare は “計算＆散布図＆CSV” だけになり、
-# トレイル画像は plot_score_trails.py が単独で担当します。
+# 2025/9/7 compare は “計算＆散布図＆CSV” だけ。トレイル画像は別スクリプトで描画。
 
 import os, ast, re, math, sys, time, random, json
 import argparse
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 import datetime as dt
 
 import requests
@@ -17,127 +16,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from zoneinfo import ZoneInfo
+
 JST = ZoneInfo("Asia/Tokyo")
-TRAILS_DIR = Path("data"); TRAILS_DIR.mkdir(parents=True, exist_ok=True)
-
-# compare_strength.py の import 付近に追加
-from pathlib import Path
-import pandas as pd
-
-TRAILS_DB = Path("data/trails_db.csv")
-
-# compare_strength.py にある upsert_trails_db を丸ごと置き換え
-from pathlib import Path
-import pandas as pd
-
-TRAILS_DB = Path("data/trails_db.csv")
-
-def upsert_trails_db(df_scores: pd.DataFrame, hours_keep: int = 24*45) -> Path:
-    """
-    df_scores: 必須列 ['symbol','usd_score','btc_score']
-    同一 (timestamp, symbol) は最後を採用。保持期間は hours_keep。
-    すべて tz-aware(UTC) に統一。
-    """
-    TRAILS_DB.parent.mkdir(parents=True, exist_ok=True)
-
-    # 15分バケツに揃えた UTC の tz-aware 時刻
-    run_ts = pd.Timestamp.now(tz="UTC").floor("15min")
-
-    # 追記行を作成（UTC付きタイムスタンプを入れる）
-    add = df_scores[["symbol", "usd_score", "btc_score"]].copy()
-    add.insert(0, "timestamp", run_ts)
-
-    # 既存CSVを読み、timestampをUTC付きに正規化
-    if TRAILS_DB.exists():
-        hist = pd.read_csv(TRAILS_DB)
-        hist["timestamp"] = pd.to_datetime(hist["timestamp"], utc=True)
-    else:
-        hist = pd.DataFrame(columns=["timestamp","symbol","usd_score","btc_score"])
-
-    # 連結 → 型そろえ
-    merged = pd.concat([hist, add], ignore_index=True)
-    merged["timestamp"] = pd.to_datetime(merged["timestamp"], utc=True)
-    merged = merged.dropna(subset=["timestamp", "symbol"])
-
-    # 保持期間で間引き
-    cutoff = run_ts - pd.Timedelta(hours=hours_keep)
-    merged = merged[merged["timestamp"] >= cutoff]
-
-    # 同一 (timestamp, symbol) は最後を残す
-    merged.sort_values(["timestamp", "symbol"], inplace=True)
-    merged = merged.drop_duplicates(["timestamp", "symbol"], keep="last")
-
-    # 保存（UTC付きのまま）
-    merged.to_csv(TRAILS_DB, index=False)
-    print(f"[TRAILS] upserted into {TRAILS_DB}, last={merged['timestamp'].max()}")
-    return TRAILS_DB
-
-
-
-
-# ---------- trails ----------
-def persist_trails(side: str, df_now: pd.DataFrame, hours_keep: int = 168) -> Path:
-    """
-    side: 'usd' / 'btc'
-    df_now: columns = ['symbol','score'] を想定
-    """
-    side = side.lower()
-    out = Path("data") / f"score_trails_{side}.csv"
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    # 追加分（UTCで統一）
-    now_utc = pd.Timestamp.now(tz="UTC")
-    add = pd.DataFrame(
-        {
-            "ts": [now_utc] * len(df_now),
-            "side": side,
-            "symbol": df_now["symbol"].astype(str).values,
-            "score": pd.to_numeric(df_now["score"], errors="coerce").values,
-        }
-    )
-
-    # 既存を読み込み → 連結
-    if out.exists():
-        hist = pd.read_csv(out)
-    else:
-        hist = pd.DataFrame(columns=["ts", "side", "symbol", "score"])
-
-    # 型そろえ
-    hist["ts"] = pd.to_datetime(hist["ts"], utc=True, errors="coerce")
-    hist["side"] = hist["side"].astype(str)
-    hist["symbol"] = hist["symbol"].astype(str)
-    hist["score"] = pd.to_numeric(hist["score"], errors="coerce")
-
-    merged = pd.concat([hist, add], ignore_index=True)
-
-    # ウィンドウ維持（168h）
-    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=hours_keep)
-    merged = merged.dropna(subset=["ts"])
-    merged = merged[merged["ts"] >= cutoff]
-
-    # 時間＆シンボルで重複排除（同時刻は最後を残す）
-    merged = merged.sort_values(["ts", "symbol"])
-    merged = merged.drop_duplicates(["ts", "symbol"], keep="last")
-
-    # 保存（UTCのまま）
-    merged.to_csv(out, index=False)
-    print(f"[TRAILS] appended into {out}, last ts (UTC) = {merged['ts'].max()}")
-    return out
-
-
-
+TRAILS_DIR = Path("data")
+TRAILS_DIR.mkdir(parents=True, exist_ok=True)
+TRAILS_DB = TRAILS_DIR / "trails_db.csv"
 
 # ------------------------------------------------------------
-# utils / HTTP
+# 共通ユーティリティ
 # ------------------------------------------------------------
 def log(msg: str) -> None:
     print(f"[LOG] {msg}")
 
 def _get_json_with_retries(url, params, *, timeout=30, attempts=4):
-    """
-    CoinGecko向け: 429/5xx/ネットワークエラーを指数バックオフで再試行。
-    envに API キーがあれば自動でヘッダ追加（任意）。
-    """
+    """429/5xx/通信失敗を指数バックオフで再試行。APIキーがあれば自動付加。"""
     sess = requests.Session()
     headers = {"User-Agent": "largecap-watch/1.0"}
     if os.getenv("COINGECKO_API_KEY"):
@@ -151,162 +43,84 @@ def _get_json_with_retries(url, params, *, timeout=30, attempts=4):
                 wait = r.headers.get("Retry-After")
                 wait = int(wait) if str(wait).isdigit() else 2 ** i
                 log(f"[HTTP429] rate-limited; sleep {wait}s")
-                time.sleep(wait)
-                continue
+                time.sleep(wait); continue
             r.raise_for_status()
             return r.json()
         except requests.RequestException as e:
             last_err = e
-            if i == attempts:
-                break
+            if i == attempts: break
             wait = min(60, 2 ** i + random.uniform(0, 0.5))
             log(f"[RETRY] {e}; attempt {i}/{attempts}, sleep {wait:.1f}s")
             time.sleep(wait)
     raise RuntimeError(f"GET failed after {attempts} attempts: {last_err}")
 
 # ------------------------------------------------------------
-# trails 保存/読込/描画
+# trails_db.csv へ upsert（UTC tz-aware で統一）
 # ------------------------------------------------------------
-
-def load_trails(side: str, hours: int | None = None) -> pd.DataFrame | None:
+def upsert_trails_db(df_scores: pd.DataFrame, hours_keep: int = 24 * 45) -> Path:
     """
-    data/score_trails_<side>.csv を読み込み。
-    ts を JST の tz-aware に正規化し、hours が指定されていればその分だけ残す。
+    df_scores: 必須列 ['symbol','usd_score','btc_score']
+    同一 (timestamp, symbol) は最後を採用。保持期間は hours_keep（既定=45日）。
+    すべて tz-aware(UTC) に統一。
     """
-    p = TRAILS_DIR / f"score_trails_{side}.csv"
-    if not p.exists():
-        return None
+    TRAILS_DIR.mkdir(parents=True, exist_ok=True)
 
-    df = pd.read_csv(p)
-    # すべて tz-aware(JST) に統一
-    df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce").dt.tz_convert(JST)
-    df.sort_values(["ts", "symbol"], inplace=True)
+    # 15分バケツに揃えた UTC の tz-aware 時刻
+    run_ts = pd.Timestamp.now(tz="UTC").floor("15min")
 
-    if hours is not None:
-        cutoff = pd.Timestamp.now(tz=JST) - pd.Timedelta(hours=hours)
-        df = df[df["ts"] >= cutoff]
+    # 追記行（UTC付きタイムスタンプ）
+    add = df_scores[["symbol", "usd_score", "btc_score"]].copy()
+    add.insert(0, "timestamp", run_ts)
 
-    return df if not df.empty else None
-
-def _spread_labels(yvals, min_gap):
-    """yvals（データ座標）を上下min_gap以上あくように順にずらす簡易アルゴリズム"""
-    if not yvals:
-        return yvals
-    y = sorted(yvals)
-    out = [y[0]]
-    for v in y[1:]:
-        out.append(max(v, out[-1] + min_gap))
-    order = np.argsort(yvals)
-    placed = {int(order[i]): out[i] for i in range(len(out))}
-    return [placed[i] for i in range(len(yvals))]
-
-def plot_trails(side: str, topn: int = 20, fname: str | None = None):
-    hist = load_trails(side, hours=168)
-    if hist is None or hist.empty:
-        print(f"[TRAILS] no data for {side}")
-        return None
-
-    last_ts = hist["ts"].max()
-    latest  = hist[hist["ts"] == last_ts].sort_values("score", ascending=False)
-    keep    = latest["symbol"].head(topn).tolist()
-
-    dfp = (
-        hist[hist["symbol"].isin(keep)]
-        .pivot(index="ts", columns="symbol", values="score")
-        .sort_index()
-    )
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-
-    # 直近の動き（Δ1）と現在値で“主役”を選ぶ
-    if dfp.shape[0] >= 2:
-        delta  = (dfp.iloc[-1] - dfp.iloc[-2]).abs()
-        movers = set(delta.nlargest(min(8, len(delta))).index)
+    # 既存CSV → timestamp を UTC tz-aware に正規化（format は固定しない）
+    if TRAILS_DB.exists():
+        hist = pd.read_csv(TRAILS_DB, dtype={"symbol": "string"})
+        hist["timestamp"] = pd.to_datetime(hist["timestamp"], utc=True, errors="coerce")
     else:
-        movers = set()
-    top_now = set(dfp.iloc[-1].nlargest(min(8, dfp.shape[1])).index)
-    label_cols = list(top_now | movers)
+        hist = pd.DataFrame(columns=["timestamp", "symbol", "usd_score", "btc_score"])
 
-    for col in dfp.columns:
-        series = dfp[col]
-        if col in label_cols:
-            ax.plot(series.index, series.values, linewidth=2.2, zorder=3)
-        else:
-            ax.plot(series.index, series.values, linewidth=1.2, alpha=0.35, zorder=2)
+    # 連結 → 型そろえ
+    merged = pd.concat([hist, add], ignore_index=True)
+    merged["timestamp"] = pd.to_datetime(merged["timestamp"], utc=True, errors="coerce")
+    merged["symbol"] = merged["symbol"].astype("string")
+    merged["usd_score"] = pd.to_numeric(merged["usd_score"], errors="coerce")
+    merged["btc_score"] = pd.to_numeric(merged["btc_score"], errors="coerce")
+    merged = merged.dropna(subset=["timestamp", "symbol"])
 
-    ax.axhline(0, color="0.3", linewidth=1)
+    # 保持期間で間引き（両者とも tz-aware なので比較OK）
+    cutoff = run_ts - pd.Timedelta(hours=hours_keep)
+    merged = merged[merged["timestamp"] >= cutoff]
 
-    x0, x1 = dfp.index[0], dfp.index[-1]
-    pad = (x1 - x0) * 0.10
-    ax.set_xlim(x0, x1 + pad)
+    # 同一 (timestamp, symbol) は最後を残す
+    merged = merged.sort_values(["timestamp", "symbol"])
+    merged = merged.drop_duplicates(["timestamp", "symbol"], keep="last")
 
-
-    # --- ここから修正後（ずらさない版） ---
-    y_last_raw = [float(dfp[c].iloc[-1]) for c in label_cols]
-
-    for (col, y0) in zip(label_cols, y_last_raw):
-        dz = float(dfp[col].iloc[-1] - (dfp[col].iloc[-2] if dfp.shape[0] >= 2 else dfp[col].iloc[-1]))
-        arrow = "↑" if dz > 1e-3 else ("↓" if dz < -1e-3 else "→")
-        # 現在値 y0 の位置にそのまま描く
-        ax.text(dfp.index[-1] + pad*0.02, y0,
-                f"{col} {arrow} {dz:+.2f}",
-                va="center", fontsize=9,
-                bbox=dict(facecolor="white", alpha=0.65, edgecolor="none", pad=0.4),
-                clip_on=False, zorder=5)
-        ax.plot([dfp.index[-1]], [y0], marker="o", markersize=3, zorder=4)
-        label_cols = sorted(label_cols, key=lambda c: float(dfp[c].iloc[-1]))
-
-    # --- ここまで修正後 ---
-
-
-    
-
-    # タイトル（JST）/ 目盛り（JST）
-    title_ts = dfp.index[-1].tz_convert(JST).strftime("%Y-%m-%d %H:%M JST")
-    ax.set_title(f"{side.upper()}-score Trails (last 168h, top {topn}) — {title_ts}")
-    ax.set_ylabel("Score (z)")
-    ax.set_xlabel("Time")
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M", tz=JST))
-    plt.setp(ax.get_xticklabels(), rotation=28, ha="right")
-
-    # 上下レンジは±対称に
-    lim = max(abs(float(np.nanmin(dfp.values))), abs(float(np.nanmax(dfp.values)))) + 0.1
-    ax.set_ylim(-lim, lim)
-
-    fig.tight_layout()
-    fname = fname or f"score_trails_{side}.png"
-    fig.savefig(fname, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"[TRAILS] wrote {fname}")
-    return fname
+    # 保存
+    merged.to_csv(TRAILS_DB, index=False)
+    print(f"[TRAILS] upserted into {TRAILS_DB}, last={merged['timestamp'].max()}")
+    return TRAILS_DB
 
 # ------------------------------------------------------------
-# universe resolve
+# universe resolve / fetch / scoring
 # ------------------------------------------------------------
 COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
-
 DEFAULT_EXCLUDE: set[str] = set()
-
 SYMBOL_TO_ID_FALLBACK = {
     "USDE":"ethena-usde","WETH":"weth","WEETH":"wrapped-eeth","WBETH":"wrapped-beacon-eth",
-    "WSTETH":"wrapped-steth","STETH":"staked-ether",
-    "USDT":"tether","USDC":"usd-coin","BUSD":"binance-usd","FDUSD":"first-digital-usd",
-    "TUSD":"true-usd","PYUSD":"paypal-usd","WBTC":"wrapped-bitcoin",
+    "WSTETH":"wrapped-steth","STETH":"staked-ether","USDT":"tether","USDC":"usd-coin",
+    "BUSD":"binance-usd","FDUSD":"first-digital-usd","TUSD":"true-usd","PYUSD":"paypal-usd",
+    "WBTC":"wrapped-bitcoin",
 }
 
 def _parse_listish(s: str | None) -> list[str]:
-    if not s:
-        return []
+    if not s: return []
     s = s.strip()
     if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
         s = s[1:-1]
     if s.startswith("[") and s.endswith("]"):
-        try:
-            return [str(x).strip() for x in ast.literal_eval(s)]
-        except Exception:
-            pass
-    if "," in s:
-        return [x.strip() for x in s.split(",") if x.strip()]
+        try: return [str(x).strip() for x in ast.literal_eval(s)]
+        except Exception: pass
+    if "," in s: return [x.strip() for x in s.split(",") if x.strip()]
     return [x for x in re.split(r"\s+", s) if x]
 
 def to_id_lower(sym_or_id: str) -> str:
@@ -315,48 +129,32 @@ def to_id_lower(sym_or_id: str) -> str:
 
 def fetch_top_mcap_ids(n: int = 12, exclude=None) -> list[str]:
     exclude_set = {str(x).lower() for x in (exclude or set())}
-    params = {
-        "vs_currency": "usd",
-        "order": "market_cap_desc",
-        "per_page": 250,
-        "page": 1,
-        "sparkline": "false",
-    }
+    params = {"vs_currency":"usd","order":"market_cap_desc","per_page":250,"page":1,
+              "sparkline":"false"}
     rows = _get_json_with_retries(COINGECKO_URL, params, timeout=30, attempts=4)
-
     ids = []
     for x in rows:
         cid = str(x.get("id") or "").lower()
-        if not cid or cid in exclude_set:
-            continue
+        if not cid or cid in exclude_set: continue
         ids.append(cid)
-        if len(ids) >= n:
-            break
+        if len(ids) >= n: break
     return ids
 
 def resolve_universe(cfg) -> list[str]:
     mode_raw = (cfg.get("universe_mode") or "manual").strip().lower()
-    mode = "top_mcap" if mode_raw in {"top_mcap", "top-mcap", "top", "mcap"} else "manual"
-
-    def _as_list(x):
-        if x is None: return []
-        if isinstance(x, (list, tuple, set)): return list(x)
-        return [x]
-
+    mode = "top_mcap" if mode_raw in {"top_mcap","top-mcap","top","mcap"} else "manual"
+    def _as_list(x): return [] if x is None else (list(x) if isinstance(x,(list,tuple,set)) else [x])
     include = [to_id_lower(x) for x in _as_list(cfg.get("include_ids"))]
-
-    # exclude をマージ（envのシンボル/IDも許容）
-    env_ex_syms = [x.upper() for x in _parse_listish(os.getenv("LARGECAP_EXCLUDE", ""))]
-    ex_ids   = _as_list(cfg.get("exclude_ids"))
-    ex_alias = _as_list(cfg.get("exclude"))          # 互換キー
-    ex_all   = env_ex_syms + ex_ids + ex_alias
+    env_ex_syms = [x.upper() for x in _parse_listish(os.getenv("LARGECAP_EXCLUDE",""))]
+    ex_ids = _as_list(cfg.get("exclude_ids"))
+    ex_alias = _as_list(cfg.get("exclude"))
+    ex_all = env_ex_syms + ex_ids + ex_alias
     exclude_ids_lower = {to_id_lower(x) for x in (set(DEFAULT_EXCLUDE) | set(ex_all))}
-
     if mode == "top_mcap":
         n = int(os.getenv("LARGECAP_TOP") or cfg.get("top_mcap_n", 12))
         ids = fetch_top_mcap_ids(n=n, exclude=exclude_ids_lower)
         ids = [i for i in ids if i.lower() not in exclude_ids_lower]
-        ids = list(dict.fromkeys(include + ids))  # include 優先
+        ids = list(dict.fromkeys(include + ids))
         print(f"[DBG] universe_mode=top_mcap, n={n}, resolved={len(ids)}")
         return ids
     else:
@@ -368,23 +166,15 @@ def resolve_universe(cfg) -> list[str]:
         print(f"[DBG] universe_mode=manual, resolved={len(ids)}")
         return ids
 
-# ------------------------------------------------------------
-# fetch & scoring
-# ------------------------------------------------------------
 CG_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
 def fetch(ids, vs):
     log(f"fetch start vs={vs}, ids={len(ids)}")
     js = _get_json_with_retries(
         CG_URL,
-        {
-            "vs_currency": vs,
-            "ids": ",".join(ids),
-            "sparkline": "false",
-            "price_change_percentage": "1h,24h,7d",
-        },
-        timeout=30,
-        attempts=4,
+        {"vs_currency":vs,"ids":",".join(ids),"sparkline":"false",
+         "price_change_percentage":"1h,24h,7d"},
+        timeout=30, attempts=4,
     )
     log(f"fetch done vs={vs}, rows={len(js)}")
     return js
@@ -392,28 +182,27 @@ def fetch(ids, vs):
 def zscore(s):
     s = pd.Series(s, dtype="float64")
     mu, sd = s.mean(), s.std(ddof=0)
-    if sd == 0 or math.isnan(sd):
-        return pd.Series([0] * len(s), index=s.index)
+    if sd == 0 or math.isnan(sd): return pd.Series([0]*len(s), index=s.index)
     return (s - mu) / sd
 
 def score_usd(df, w, use_vol, vol_w):
     from numpy import exp
-    comp = (w.get("pct_1h", 0) * zscore(df["pct_1h"]) +
-            w.get("pct_24h", 0) * zscore(df["pct_24h"]) +
-            w.get("pct_7d", 0) * zscore(df["pct_7d"]))
+    comp = (w.get("pct_1h",0)*zscore(df["pct_1h"]) +
+            w.get("pct_24h",0)*zscore(df["pct_24h"]) +
+            w.get("pct_7d",0)*zscore(df["pct_7d"]))
     if use_vol:
-        zv = zscore(df["volume_usd"]).clip(-3, 3)
-        comp = comp + vol_w * (1 / (1 + exp(-zv)) - 0.5)
+        zv = zscore(df["volume_usd"]).clip(-3,3)
+        comp = comp + vol_w * (1/(1+exp(-zv)) - 0.5)
     return comp
 
 def score_btc(df, w, use_vol, vol_w):
     from numpy import exp
-    comp = (w.get("pct_1h_btc", 0) * zscore(df["pct_1h_btc"]) +
-            w.get("pct_24h_btc", 0) * zscore(df["pct_24h_btc"]) +
-            w.get("pct_7d_btc", 0) * zscore(df["pct_7d_btc"]))
+    comp = (w.get("pct_1h_btc",0)*zscore(df["pct_1h_btc"]) +
+            w.get("pct_24h_btc",0)*zscore(df["pct_24h_btc"]) +
+            w.get("pct_7d_btc",0)*zscore(df["pct_7d_btc"]))
     if use_vol:
-        zv = zscore(df["volume_usd"]).clip(-3, 3)
-        comp = comp + vol_w * (1 / (1 + exp(-zv)) - 0.5)
+        zv = zscore(df["volume_usd"]).clip(-3,3)
+        comp = comp + vol_w * (1/(1+exp(-zv)) - 0.5)
     return comp
 
 # ------------------------------------------------------------
@@ -443,7 +232,7 @@ def main():
 
     rows_usd = [{
         "id": x["id"],
-        "symbol": str(x.get("symbol", "")).upper(),
+        "symbol": str(x.get("symbol","")).upper(),
         "name": x.get("name"),
         "price_usd": x.get("current_price"),
         "pct_1h": x.get("price_change_percentage_1h_in_currency") or 0.0,
@@ -484,34 +273,11 @@ def main():
         if u >= th_u and b <  th_b:   return "B 強×弱（USD強・BTC優位）"
         if u <  th_u and b >= th_b:   return "C 弱×強（BTC重・アルト優勢）"
         return "D 弱×弱（様子見）"
-    df["quadrant"] = [label(u, b) for u, b in zip(df["usd_score"], df["btc_score"])]
+    df["quadrant"] = [label(u,b) for u,b in zip(df["usd_score"], df["btc_score"])]
 
     # ---- Trails 追記（統合：trails_db.csv を正とする）
     scores_for_trails = df[["symbol","usd_score","btc_score"]].copy()
     upsert_trails_db(scores_for_trails, hours_keep=24*45)
-
-
-
-    # ---- Trails 追記 & 描画
-    # latest_usd = df[["symbol","usd_score"]].rename(columns={"usd_score": "score"})
-    # latest_btc = df[["symbol","btc_score"]].rename(columns={"btc_score": "score"})
-    # trail_csv_usd = persist_trails("usd", latest_usd)
-    # trail_csv_btc = persist_trails("btc", latest_btc)
-    # print("[TRAILS] appended:", trail_csv_usd, trail_csv_btc)   
-    # plot_trails("usd", topn=20, fname="score_trails_usd.png")
-    # plot_trails("btc", topn=20, fname="score_trails_btc.png")
-
-    # ==== USD×BTC (合成) のトレイル ====
-    # lam = float(cfg.get("compare_penalty_lambda", 0.3))  # 既存の compare λ を流用
-    # latest_combo = df[["symbol"]].copy()
-    # latest_combo["score"] = (
-    #    df["usd_score"] + df["btc_score"] - lam * (df["usd_score"] - df["btc_score"]).abs()
-    # )
-    # CSV 追記（短期：168h保持）
-    # persist_trails("usdxbtc", latest_combo, hours_keep=168)
-    # 折れ線を出力（短期）
-    # plot_trails("usdxbtc", topn=20, fname="score_trails_usdxbtc.png")
-
 
     # ---- 出力
     out_csv = out_dir / cfg.get("out_csv", "largecap_compare.csv")
@@ -524,25 +290,22 @@ def main():
     log(f"wrote CSV: {out_csv}")
 
     # ==== compare フィルタ＆スコア ====
-    src_topn  = int(cfg.get("compare_source_topn", 30))   # 片側で参照するTopN
-    cmp_topn  = int(cfg.get("compare_top_n", 20))         # 最終表示数
-    guard_min = float(cfg.get("compare_guard_min", 0.0))  # 両軸の最低ライン(z)
-    lam       = float(cfg.get("compare_penalty_lambda", 0.3))  # 不均衡ペナルティ
+    src_topn  = int(cfg.get("compare_source_topn", 30))
+    cmp_topn  = int(cfg.get("compare_top_n", 20))
+    guard_min = float(cfg.get("compare_guard_min", 0.0))
+    lam       = float(cfg.get("compare_penalty_lambda", 0.3))
     sort_mode = str(cfg.get("compare_sort", "sum")).lower()
 
     sym_col = "symbol" if "symbol" in df.columns else None
     original_df = df.set_index(sym_col, drop=False).copy() if sym_col else df.copy()
 
-    # ランク計算
     df["rank_usd"] = df["usd_score"].rank(ascending=False, method="first")
     df["rank_btc"] = df["btc_score"].rank(ascending=False, method="first")
 
-    # OR＋ガード（片側TopN以内 かつ 両軸 guard_min 以上）
     mask_or    = (df["rank_usd"] <= src_topn) | (df["rank_btc"] <= src_topn)
     mask_guard = (df["usd_score"] >= guard_min) & (df["btc_score"] >= guard_min)
     df = df.loc[mask_or & mask_guard].copy()
 
-    # 並べ替えスコア
     if sort_mode == "sum":
         base = df["usd_score"] + df["btc_score"]
         penalty = lam * (df["usd_score"] - df["btc_score"]).abs()
@@ -556,13 +319,11 @@ def main():
     else:
         df["score"] = df["usd_score"] + df["btc_score"]
 
-    # 上位 compare_top_n だけ残す（保険：空なら合計で埋める）
     if df.empty:
         df = original_df.copy()
         df["score"] = df["usd_score"] + df["btc_score"]
     df = df.sort_values("score", ascending=False).head(cmp_topn)
 
-    # 足りないときのフォールバック
     if len(df) < cmp_topn:
         need = cmp_topn - len(df)
         rest = original_df.loc[~original_df.index.isin(df[sym_col])] if sym_col else original_df.drop(df.index, errors="ignore")
@@ -598,27 +359,11 @@ def main():
     show = df.sort_values(["btc_score", "usd_score"], ascending=False)[["symbol", "usd_score", "btc_score", "quadrant"]]
     print(show.to_string(index=False))
     print("[DONE]")
-
-    # 参考ログ（フィルタの残数）
     print("before filter:", len(df))
     print("OR kept:", ((df["rank_usd"] <= src_topn) | (df["rank_btc"] <= src_topn)).sum())
     if guard_min is not None:
         print(f"guard_min={guard_min} kept:",
               ((df["usd_score"] >= guard_min) & (df["btc_score"] >= guard_min)).sum())
 
-
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
