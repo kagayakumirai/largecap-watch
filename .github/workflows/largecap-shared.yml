@@ -212,15 +212,6 @@ jobs:
           fi
           head -n 3 data/trails_db.csv || true
 
-      # quiet legacy JSON warning (optional)
-      - name: Quiet legacy JSON history warning
-        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p data
-          [[ -f data/trails_db.json ]] || echo '{"usd":[],"btc":[]}' > data/trails_db.json
-
       - name: Repair trails history (daily; bash only)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         shell: bash
@@ -325,6 +316,16 @@ jobs:
           join -t, -a1 -a2 -e "" -o '0,1.2,2.2' -1 1 -2 1 /tmp/usd.csv /tmp/btc.csv > /tmp/merged.csv || true
           awk -F',' -v OFS=',' -v ts="$ts" '{print ts,$0}' /tmp/merged.csv >> "$f"
           echo "[append] $(wc -l < /tmp/merged.csv) rows at $ts"
+
+
+      # quiet legacy JSON warning (optional)
+      - name: Quiet legacy JSON history warning
+        if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          [[ -f data/trails_db.json ]] || echo '{"usd":[],"btc":[]}' > data/trails_db.json
 
       - name: Compute daily render gate
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
