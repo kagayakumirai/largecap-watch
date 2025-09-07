@@ -58,36 +58,27 @@ def main():
         cutoff = df["timestamp"].max() - pd.Timedelta(hours=args.hours)
         df = df[df["timestamp"] >= cutoff].copy()
 
-    # ピボット（usd/btc/usdxbtc）
-    p_usd = df.pivot_table(index="timestamp", columns="symbol",
-                           values="usd_score", aggfunc="last").sort_index()
-    p_btc = df.pivot_table(index="timestamp", columns="symbol",
-                           values="btc_score", aggfunc="last").sort_index()
-    
-    if args.metric == "usd":
-        pv = p_usd
-    elif args.metric == "btc":
-        pv = p_btc
+    # ... pivot に入る直前の分岐
+    if args.metric in ("usd", "btc"):
+        col = "btc_score" if args.metric == "btc" else "usd_score"
+        pv = (df.pivot_table(index="timestamp", columns="symbol", values=col, aggfunc="last")
+                .sort_index())
     else:
-        # 行単位で usdxbtc を作ってからピボット
-        tmp = df.dropna(subset=["usd_score", "btc_score"]).copy()
+        # usdxbtc = usd_score - btc_score を“行で”作る（時刻ズレの影響を無くす）
+        tmp = df.dropna(subset=["usd_score","btc_score"]).copy()
         tmp["usdxbtc"] = tmp["usd_score"] - tmp["btc_score"]
     
         pv = (tmp.pivot_table(index="timestamp", columns="symbol",
                               values="usdxbtc", aggfunc="last")
                 .sort_index())
     
-        # 1) 等間隔グリッド化（指定がなければ 30min に）
-        freq = args.resample if args.resample else "30min"
-        pv = pv.resample(freq).median()
+    # 以降は共通処理
+    if args.resample:
+        pv = pv.resample(args.resample).median()
     
-        # 2) 小さな穴をつなぐ（時間補間＋前後詰め）
-        pv = pv.interpolate(method="time", limit=4, limit_area="inside")
-        pv = pv.ffill(limit=2).bfill(limit=2)
-    
-        # 3) カバレッジが低すぎる銘柄は落とす（残NaNが多い列の除外）
-        cov = pv.notna().mean()
-        pv = pv.loc[:, cov >= 0.6]   # 60% 以上データがある列だけ残す
+    # 小さな穴だけつなぐ（過補間は避ける）
+    pv = pv.interpolate(method="time", limit=4, limit_area="inside").ffill(limit=2).bfill(limit=2)
+
 
 
 
