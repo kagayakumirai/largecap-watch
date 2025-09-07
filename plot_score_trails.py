@@ -70,7 +70,7 @@ def main():
         lam = 0.3  # 好みで 0.2〜0.5
         p_usd = df.pivot_table(index="timestamp", columns="symbol", values="usd_score", aggfunc="last")
         p_btc = df.pivot_table(index="timestamp", columns="symbol", values="btc_score", aggfunc="last")
-        pv = (p_usd.add(p_btc, fill_value=0) - lam * (p_usd.sub(p_btc, fill_value=0).abs())).sort_index()
+        pv = p_usd.sub(p_btc).sort_index()  # ← fill_value を外す
 
     if pv.empty:
         print("[ERR] pivot result is empty")
