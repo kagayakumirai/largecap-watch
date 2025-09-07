@@ -347,6 +347,7 @@ jobs:
           COMMON="--hist data/trails_db.csv --hours $SHOW --topn 16 --rank abs --highlight 6 --resample 1H --ema 3 --right-labels --ylim 3.0"
           python plot_score_trails.py --metric usd $COMMON
           python plot_score_trails.py --metric btc $COMMON
+          python plot_score_trails.py --metric usdxbtc $COMMON --ylim 1.6   # ← 追加
           # 改良版のファイル名(_clean)から互換名を用意
           U=$(ls -t score_trails_usd_*_clean.png 2>/dev/null | head -1 || true)
           B=$(ls -t score_trails_btc_*_clean.png 2>/dev/null | head -1 || true)
