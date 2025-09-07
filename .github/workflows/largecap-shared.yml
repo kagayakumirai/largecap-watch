@@ -143,7 +143,7 @@ jobs:
           SHOW=48
           COMMON_BASE="--hist data/trails_db.csv --hours $SHOW --topn 16 --rank abs --highlight 6 --right-labels"
           COMMON_USD_BTC="$COMMON_BASE --resample 1h --ema 3 --ylim 3.0"
-          COMMON_USDXBTC="$COMMON_BASE --resample 30min --ema 1 --ylim 1.2 --topn 12 --highlight 6 --figh 5.5"
+          COMMON_USDXBTC="$COMMON_BASE --resample 30min --ema 3 --ylim 1.2 --topn 12 --highlight 6 --figh 5.5 --right-labels"
 
           python plot_score_trails.py --metric usd     $COMMON_USD_BTC
           python plot_score_trails.py --metric btc     $COMMON_USD_BTC
