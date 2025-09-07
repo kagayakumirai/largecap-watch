@@ -339,6 +339,23 @@ jobs:
           if [[ "$HNOW" == "$TARGET" ]]; then echo "render=1" >> "$GITHUB_OUTPUT"; else echo "render=0" >> "$GITHUB_OUTPUT"; fi
           echo "UTC now=$HNOW target=$TARGET"
 
+
+      - name: Lint YAML (show line/col)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys, yaml
+          for p in ("config_largecap.yaml","config_largecap_compare.yaml"):
+              print("checking", p)
+              try:
+                  with open(p, encoding="utf-8") as f:
+                      yaml.safe_load(f)
+                  print("  OK")
+              except Exception as e:
+                  print("  ERROR:", e)
+                  raise
+          PY
+
       
       - name: Render long-range charts (daily gate)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 && steps.gate.outputs.render == '1' }}
