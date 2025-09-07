@@ -442,6 +442,26 @@ jobs:
             -F "file6=@${files[5]};type=image/png" \
             "$WEBHOOK"
 
+      - name: Send monthly (30d/daily) charts to Discord (daily gate)
+        if: ${{ success() && inputs.send_discord && env.WEBHOOK != '' && steps.gate.outputs.render == '1' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            data/score_trails_usd_daily30.png
+            data/score_trails_btc_daily30.png
+            data/score_trails_usdxbtc_daily30.png
+          )
+          for f in "${files[@]}"; do [[ -f "$f" ]] || { echo "missing $f"; exit 1; }; done
+          payload="$(jq -n --arg content "LargeCap monthly (daily-agg) — $(date -u +'%Y-%m-%d %H:%M UTC')" '{content:$content}')"
+          curl --fail-with-body -sS \
+            -F "payload_json=${payload}" \
+            -F "file1=@${files[0]};type=image/png" \
+            -F "file2=@${files[1]};type=image/png" \
+            -F "file3=@${files[2]};type=image/png" \
+            "$WEBHOOK"
+
+
       # 10) 生成物コミット
       - name: Commit & push artifacts
         shell: bash
