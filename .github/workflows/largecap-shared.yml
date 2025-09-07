@@ -318,7 +318,7 @@ jobs:
         run: |
           set -euo pipefail
           SHOW='${{ inputs.trails_show_hours }}'   # 例: 720（整数の“時間”）
-          COMMON="--hist data/trails_db.csv --hours $SHOW --topn 20 --rank abs --highlight 8 --resample 30min --ema 5 --right-labels --ylim 3.5"
+          COMMON="--hist data/trails_db.csv --hours $SHOW --topn 16 --rank abs --highlight 6 --resample 1H --ema 3 --right-labels --ylim 3.0"
           python plot_score_trails.py --metric usd $COMMON
           python plot_score_trails.py --metric btc $COMMON
           # 改良版のファイル名(_clean)から互換名を用意
