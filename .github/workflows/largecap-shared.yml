@@ -159,9 +159,11 @@ jobs:
       
           ls -l --time-style=long-iso score_trails_*_clean.png score_trails_*.png || true
           
+          # USD×BTC 平面のトレイル（48h）
           python plot_usd_btc_plane.py --hist data/trails_db.csv \
             --hours 48 --resample 1H --ema 3 --topn 16 --highlight 6 \
-            --out data/largecap_usd_vs_btc_plane.png
+            --out data/largecap_usd_vs_btc_trails.png
+
 
 
       # (daily only) 履歴ファイルが無ければ正しいヘッダーで初期化
@@ -362,6 +364,12 @@ jobs:
           [[ -n "$B" ]] && cp -f -- "$B" score_trails_btc.png
           [[ -n "$X" ]] && cp -f -- "$X" score_trails_usdxbtc.png
           ls -l --time-style=long-iso score_trails_*_clean.png score_trails_usd.png score_trails_btc.png || true
+
+          # USD×BTC 平面のトレイル（長期）
+          python plot_usd_btc_plane.py --hist data/trails_db.csv \
+            --hours "$SHOW" --resample 1H --ema 3 --topn 16 --highlight 6 \
+            --out data/largecap_usd_vs_btc_trails.png
+
 
       - name: Render monthly (30d) trails with daily aggregation (daily gate)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 && steps.gate.outputs.render == '1' }}
