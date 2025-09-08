@@ -53,10 +53,14 @@ def main():
                            values="btc_score", aggfunc="last").sort_index()
 
     # リサンプリング（中央値）→ 小穴補間 → 軽くスムージング
-    def prep(pv: pd.DataFrame) -> pd.DataFrame:
+    def prep(pv):
         if args.resample:
             pv = pv.resample(args.resample).median()
-        pv = pv.interpolate(method="time", limit=4, limit_area="inside").ffill(2).bfill(2)
+        pv = (
+            pv.interpolate(method="time", limit=4, limit_area="inside")
+              .ffill(limit=2)
+              .bfill(limit=2)
+        )
         if args.ema and args.ema > 1:
             pv = pv.ewm(span=args.ema, adjust=False).mean()
         return pv
