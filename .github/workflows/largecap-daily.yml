@@ -3,7 +3,7 @@ name: Largecap Daily
 on:
   workflow_dispatch:
   schedule:
-    - cron: '5 * * * *'          # 毎時05分
+    - cron: '0 * * * *'          # 毎時05分
 
 # ← これを追加（または下の jobs.run.permissions に置いてもOK）
 permissions:
