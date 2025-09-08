@@ -160,9 +160,10 @@ jobs:
           ls -l --time-style=long-iso score_trails_*_clean.png score_trails_*.png || true
           
           # USD×BTC 平面のトレイル（48h）
-          python plot_usd_btc_plane.py --hist data/trails_db.csv \
-            --hours 48 --resample 1H --ema 3 --topn 16 --highlight 6 \
-            --out data/largecap_usd_vs_btc_trails.png
+          python plot_usd_btc_lines.py --hist data/trails_db.csv \
+            --hours 48 --resample 1h --ema 3 --topn 16 --rank abs --right-labels \
+            --out data/usd_btc_lines_48h.png
+
 
 
 
@@ -396,6 +397,11 @@ jobs:
       
           ls -l --time-style=long-iso data/score_trails_*daily30.png || true
 
+          python plot_usd_btc_lines.py --hist data/trails_db.csv \
+          --hours 720 --resample 1D --ema 0 --topn 12 --rank abs --right-labels \
+          --out data/usd_btc_lines_daily30.png
+
+
 
       # 8) 迷子の生成物を data/ に集約（保険）
       - name: Normalize artifacts into data/
@@ -439,7 +445,7 @@ jobs:
             data/largecap_strength.png
             data/largecap_strength_btc.png
             data/score_trails_usdxbtc.png
-            data/largecap_usd_vs_btc_plane.png
+            data/usd_btc_lines_48h.png
           )
           now=$(date +%s); max_age=$((60*60))
           for f in "${files[@]}"; do
@@ -467,6 +473,7 @@ jobs:
             data/score_trails_usd_daily30.png
             data/score_trails_btc_daily30.png
             data/score_trails_usdxbtc_daily30.png
+            data/usd_btc_lines_daily30.png
           )
           for f in "${files[@]}"; do [[ -f "$f" ]] || { echo "missing $f"; exit 1; }; done
           payload="$(jq -n --arg content "LargeCap monthly (daily-agg) — $(date -u +'%Y-%m-%d %H:%M UTC')" '{content:$content}')"
@@ -475,6 +482,7 @@ jobs:
             -F "file1=@${files[0]};type=image/png" \
             -F "file2=@${files[1]};type=image/png" \
             -F "file3=@${files[2]};type=image/png" \
+            -F "file4=@${files[3]};type=image/png" \
             "$WEBHOOK"
 
 
