@@ -84,8 +84,9 @@ def main():
         # 右端（最新点）にシンボルラベル
         x, y = float(g["usd_score"].iloc[-1]), float(g["btc_score"].iloc[-1])
         if sym in hi:
-            ax.text(x, y, sym, fontsize=9, ha="left", va="center", xytext=(4,0),
-                    textcoords="offset points")
+            ax.annotate(sym, xy=(x, y), xytext=(4, 0), textcoords="offset points",
+            fontsize=9, ha="left", va="center")
+
 
     ax.set_xlabel("USD composite (z)")
     ax.set_ylabel("BTC-quoted composite (z)")
