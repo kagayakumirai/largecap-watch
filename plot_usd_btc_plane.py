@@ -1,115 +1,110 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# USD-score vs BTC-score の平面に「軌跡（trails）」を描く
-#
-# 例:
-#   python plot_usd_btc_plane.py --hist data/trails_db.csv \
-#     --hours 48 --resample 1H --ema 3 --topn 16 --highlight 6 \
-#     --out data/largecap_usd_vs_btc_plane.png
+# USD-score vs BTC-score の「折れ線トレイル」版
 
-from pathlib import Path
 import argparse
-import numpy as np
+from pathlib import Path
+import math
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import matplotlib.patheffects as pe
 
-def load_hist(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    # ここでは“再正規化しない”。時刻は tz-aware で揃えるだけ
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
-    df = df.dropna(subset=["timestamp","symbol"])
-    df["symbol"] = df["symbol"].str.upper()
-    return df.sort_values(["timestamp","symbol"])
-
-def make_xy_pivots(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    p_usd = (df.pivot_table(index="timestamp", columns="symbol",
-                            values="usd_score", aggfunc="last").sort_index())
-    p_btc = (df.pivot_table(index="timestamp", columns="symbol",
-                            values="btc_score", aggfunc="last").sort_index())
-    return p_usd, p_btc
+def _last_per_symbol(df: pd.DataFrame) -> pd.DataFrame:
+    # 各 symbol の“最後の観測行”を取得
+    return df.sort_values("timestamp").groupby("symbol", as_index=False).tail(1)
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--hist", required=True)
+    ap.add_argument("--hist", default="data/trails_db.csv")
     ap.add_argument("--hours", type=int, default=48)
-    ap.add_argument("--resample", default="1H", help="例: 30min / 1H / 2H （空文字で無効）")
-    ap.add_argument("--ema", type=int, default=3, help="EWM の span（0/1で無効）")
+    ap.add_argument("--resample", default="1H", help="例: 15min/30min/1H/6H/1D")
+    ap.add_argument("--ema", type=int, default=0, help="0/1で無効、2以上で平滑")
     ap.add_argument("--topn", type=int, default=16)
     ap.add_argument("--highlight", type=int, default=6)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--rank", choices=["mag","sum","usd","btc"], default="mag",
+                    help="上位抽出の指標: mag=√(usd^2+btc^2), sum=|usd|+|btc|")
+    ap.add_argument("--out", default="data/largecap_usd_vs_btc_trails.png")
     args = ap.parse_args()
 
-    df = load_hist(Path(args.hist))
-    if args.hours > 0:
-        cutoff = df["timestamp"].max() - pd.Timedelta(hours=args.hours)
-        df = df[df["timestamp"] >= cutoff].copy()
-    if df.empty:
-        print("[ERR] no data")
+    p = Path(args.hist)
+    if not p.exists():
+        print(f"[ERR] not found: {p}")
         return
 
-    p_usd, p_btc = make_xy_pivots(df)
+    df = pd.read_csv(p, parse_dates=["timestamp"])
+    # 時間フィルタ
+    if args.hours > 0 and not df.empty:
+        cutoff = df["timestamp"].max() - pd.Timedelta(hours=args.hours)
+        df = df[df["timestamp"] >= cutoff].copy()
 
-    # 時刻を union し、小さな穴だけ補間（fill_value は使わない）
-    idx = p_usd.index.union(p_btc.index)
-    U = p_usd.reindex(idx).interpolate(method="time", limit=2, limit_area="inside").ffill(limit=1).bfill(limit=1)
-    B = p_btc.reindex(idx).interpolate(method="time", limit=2, limit_area="inside").ffill(limit=1).bfill(limit=1)
+    if df.empty:
+        print("[ERR] empty history after filtering")
+        return
 
-    # リサンプリング
-    if args.resample:
-        U = U.resample(args.resample).median()
-        B = B.resample(args.resample).median()
+    # 直近での順位付けに使う値
+    last = _last_per_symbol(df)
+    if args.rank == "mag":
+        score = np.sqrt(last["usd_score"]**2 + last["btc_score"]**2)
+    elif args.rank == "sum":
+        score = np.abs(last["usd_score"]) + np.abs(last["btc_score"])
+    elif args.rank == "usd":
+        score = np.abs(last["usd_score"])
+    else:
+        score = np.abs(last["btc_score"])
+    keep = last.assign(_rank=score).sort_values("_rank", ascending=False)["symbol"].head(args.topn).tolist()
 
-    # 平滑化（必要なら）
-    if args.ema and args.ema > 1:
-        U = U.ewm(span=args.ema, adjust=False).mean()
-        B = B.ewm(span=args.ema, adjust=False).mean()
+    df = df[df["symbol"].isin(keep)].copy()
 
-    # 最新時点での上位銘柄を選ぶ（合成= usd+btc の絶対値で選抜）
-    last_u = U.iloc[-1]; last_b = B.iloc[-1]
-    score_for_pick = (last_u + last_b).abs()
-    keep = list(score_for_pick.dropna().sort_values(ascending=False).head(args.topn).index)
-    U, B = U[keep], B[keep]
+    # 図
+    fig, ax = plt.subplots(figsize=(7.5, 8.0))
 
-    # 描画
-    fig, ax = plt.subplots(figsize=(8, 8))
-    # ガイド線
-    ax.axvline(0, color="#2c6da4", lw=2)
-    ax.axhline(0, color="#2c6da4", lw=2)
+    # 目安線
+    ax.axhline(0, color="#2b5a7b", lw=2)
+    ax.axvline(0, color="#2b5a7b", lw=2)
 
-    # 強調とサブ
+    # ハイライト対象
     k = max(1, min(args.highlight, len(keep)))
-    strong, weak = keep[:k], keep[k:]
+    hi = set(keep[:k])
 
-    # サブは薄く
-    for sym in weak:
-        x, y = U[sym].values, B[sym].values
-        ax.plot(x, y, lw=1.0, alpha=0.25, color="0.6", zorder=1)
+    # 銘柄ごとに resample → ema 平滑 → 折れ線
+    for sym, g in df.groupby("symbol"):
+        g = g.sort_values("timestamp").set_index("timestamp")[["usd_score","btc_score"]]
+        if args.resample:
+            g = g.resample(args.resample).median()
+        if args.ema and args.ema > 1:
+            g = g.ewm(span=args.ema, adjust=False).mean()
+        g = g.dropna(how="any")
+        if g.empty:
+            continue
 
-    # 強調は太く & ラベル
-    for sym in strong:
-        x, y = U[sym].values, B[sym].values
-        ax.plot(x, y, lw=2.2, alpha=0.95, zorder=3, label=sym)
-        # 終点ラベル
-        ax.annotate(sym, (x[-1], y[-1]), xytext=(6, 0), textcoords="offset points",
-                    va="center", fontsize=9,
-                    path_effects=[pe.withStroke(linewidth=3, foreground="white")])
+        lw = 2.2 if sym in hi else 1.0
+        alpha = 0.95 if sym in hi else 0.25
+        ax.plot(g["usd_score"], g["btc_score"], lw=lw, alpha=alpha, zorder=2 if sym in hi else 1)
 
-    # 軸レンジはデータから自動（対称で少し余白）
-    vmax = float(np.nanmax(np.abs(np.r_[U.to_numpy().ravel(), B.to_numpy().ravel()])))
-    vmax = max(1.0, vmax) * 1.05
-    ax.set_xlim(-vmax, vmax); ax.set_ylim(-vmax, vmax)
+        # 右端（最新点）にシンボルラベル
+        x, y = float(g["usd_score"].iloc[-1]), float(g["btc_score"].iloc[-1])
+        if sym in hi:
+            ax.text(x, y, sym, fontsize=9, ha="left", va="center", xytext=(4,0),
+                    textcoords="offset points")
 
     ax.set_xlabel("USD composite (z)")
     ax.set_ylabel("BTC-quoted composite (z)")
     ax.set_title("USD-score vs BTC-score — trails")
+
+    # 対称レンジに（少し余白）
+    allx = df["usd_score"].to_numpy(np.float64)
+    ally = df["btc_score"].to_numpy(np.float64)
+    vmax = max(np.nanmax(np.abs(allx)), np.nanmax(np.abs(ally)))
+    vmax = 1.05 * (vmax if np.isfinite(vmax) else 1.0)
+    ax.set_xlim(-vmax, vmax)
+    ax.set_ylim(-vmax, vmax)
+
     ax.grid(False)
-    plt.tight_layout()
+    fig.tight_layout()
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(args.out, dpi=150, bbox_inches="tight")
+    fig.savefig(args.out, dpi=150)
+    plt.close(fig)
     print(f"[OK] wrote: {args.out}")
 
 if __name__ == "__main__":
     main()
-
