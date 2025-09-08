@@ -15,6 +15,7 @@ def _last_per_symbol(df: pd.DataFrame) -> pd.DataFrame:
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--no-trails", action="store_true", help="過去軌跡（稲妻）を描かない")
     ap.add_argument("--hist", default="data/trails_db.csv")
     ap.add_argument("--hours", type=int, default=48)
     ap.add_argument("--resample", default="1H", help="例: 15min/30min/1H/6H/1D")
