@@ -110,6 +110,72 @@ def main():
     # 凡例は混みやすいのでデフォルトOFF（右端ラベル推奨）
     # ax.legend(ncol=4, fontsize=8, frameon=False)
 
+    # ==== ここから追加（p_usd/p_btc の resample・ema 後）====
+
+import numpy as np
+import pandas as pd
+
+SLOPE_H = 6  # 直近6時間の傾き。好みで 3/12 などに
+
+def slope_over(series: pd.Series, hours: int) -> float:
+    """直近 hours の平均傾き（1時間あたり）。データが薄い時も asof で補う。"""
+    if series.empty:
+        return np.nan
+    t_now = series.index[-1]
+    t_then = t_now - pd.Timedelta(hours=hours)
+    v_then = series.asof(t_then)  # 直近 t_then 以下の値
+    if pd.isna(v_then):
+        v_then = series.iloc[0]
+        dt_h = (series.index[-1] - series.index[0]).total_seconds()/3600 or 1.0
+    else:
+        dt_h = hours
+    return (float(series.iloc[-1]) - float(v_then)) / dt_h
+
+labels = []  # (sym, u_now, b_now, u_slope, b_slope, breakout_ts)
+
+for sym in p_usd.columns:
+    u = p_usd[sym].dropna()
+    b = p_btc[sym].dropna()
+    if u.empty or b.empty:
+        continue
+
+    u_now, b_now = float(u.iloc[-1]), float(b.iloc[-1])
+    u_slope = slope_over(u, SLOPE_H)
+    b_slope = slope_over(b, SLOPE_H)
+
+    # ブレイクアウト（U>0 & B>0 が連続3ポイント以上になった最初の時刻）
+    brk = None
+    both_pos = (u > 0) & (b > 0)
+    run = (both_pos != both_pos.shift()).cumsum()
+    seglen = both_pos.groupby(run).transform('size')
+    ok = both_pos & (seglen >= 3)
+    if ok.any():
+        brk = ok[ok].index[0]
+
+    labels.append((sym, u_now, b_now, u_slope, b_slope, brk))
+
+    # 並び順：いま強い(現在値)7割 + 勢い(傾き)3割
+    labels.sort(key=lambda x: 0.7*(x[1]+x[2]) + 0.3*(x[3]+x[4]), reverse=True)
+    
+    def arrow(v):
+        return "↗︎" if v > 0.02 else ("↘︎" if v < -0.02 else "→")
+    
+    x_end = p_usd.index[-1]
+    pad = (p_usd.index[-1] - p_usd.index[0]) * 0.03
+    
+    for sym, u_now, b_now, us, bs, brk in labels:
+        y = (u_now + b_now) / 2.0  # ラベルを置く高さ（USD/BTCの平均）
+        txt = f"{sym}  U:{u_now:+.2f} / B:{b_now:+.2f}  {arrow(us)}{SLOPE_H}h:{us:+.2f}/{bs:+.2f}"
+        ax.text(x_end + pad, y, txt, va="center", fontsize=9,
+                bbox=dict(facecolor="white", alpha=0.65, edgecolor="none"))
+    
+        if brk is not None:
+            y_brk = (p_usd.loc[brk, sym] + p_btc.loc[brk, sym]) / 2.0
+            ax.scatter([brk], [y_brk], s=28, zorder=5)
+    
+    # ==== 追加おわり ====
+
+
     plt.tight_layout()
     if not args.out:
         args.out = f"usd_btc_lines_h{args.hours}_top{len(keep)}.png"
