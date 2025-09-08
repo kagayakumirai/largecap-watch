@@ -187,7 +187,8 @@ def main():
             ax.text(x_end + pad, y_adj, u"\u25A0", color=c, va="center",
                     fontsize=10, clip_on=False, zorder=6)
             # ラベル本文
-            txt = f"  {sym}  U:{u_now:+.2f} / B:{b_now:+.2f}  {arrow(us)}{SLOPE_H}h:{us:+.2f}/{bs:+.2f}"
+            box = "\u25A0\u2005"      # ■ と薄い空白（\u2005 は Four-Per-Em Space）
+            txt  = f"{box}{sym}  U:{u_now:+.2f} / B:{b_now:+.2f}  {arrow(us)}6h:{us:+.2f}/{bs:+.2f}"
             ax.text(x_end + pad, y_adj, txt, va="center", fontsize=9,
                     bbox=dict(facecolor="white", alpha=0.65, edgecolor="none", pad=0.4),
                     clip_on=False, zorder=5)
