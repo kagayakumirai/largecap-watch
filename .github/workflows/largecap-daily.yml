@@ -1,4 +1,4 @@
-name: Largecap Daily
+name: Largecap Daily　
 
 on:
   workflow_dispatch:
