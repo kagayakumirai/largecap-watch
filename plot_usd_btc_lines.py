@@ -92,6 +92,10 @@ def main():
         ax.plot(p_usd.index, p_usd[sym].values, lw=1.8, color=c, zorder=3)
         ax.plot(p_btc.index, p_btc[sym].values, lw=1.2, ls="--", alpha=0.95,
                 color=c, zorder=3)
+    # ★ここから追加：右側に余白（ラベル用のパッド）を確保
+    span = p_usd.index[-1] - p_usd.index[0]
+    pad  = span * 0.08   # ← もともと 0.03 くらい。右へ大きく寄せたいので 0.08
+    ax.set_xlim(p_usd.index[0], p_usd.index[-1] + pad*1.25)
 
     # yレンジ（ラベル配置で使うのでここで確定）
     if args.ylim is not None:
