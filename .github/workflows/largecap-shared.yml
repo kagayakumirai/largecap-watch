@@ -9,19 +9,22 @@ on:
       python-version:
         type: string
         default: '3.11'
-      trails_keep_hours:         # daily だけ >0 を渡す
+      trails_keep_hours:          # daily だけ >0 を渡す
         type: number
         default: 0
-      trails_show_hours:         # 描画に使う時間窓（15m: 48, daily: 720 など）
+      trails_show_hours:          # 描画に使う時間窓（15m:48 / daily:720 など）
         type: number
         default: 48
-      render_daily_hour:         # daily の描画時刻（UTC 時）
+      render_daily_hour:          # daily の描画時刻（UTC 時）
         type: string
         default: '00'
+      force_render:               # ← 追加：手動でレンダーを強制したいときに true
+        type: boolean
+        default: false
     secrets:
       DISCORD_WEBHOOK_URL:
         required: false
-      DISCORD_WEBHOOK:           # 旧名も許容
+      DISCORD_WEBHOOK:            # 旧名も許容
         required: false
 
 jobs:
@@ -134,7 +137,7 @@ jobs:
           set -euo pipefail
           python compare_strength.py --config config_largecap_compare.effective.yaml
 
-      #A) 15分ランでも3枚描く
+      # A) 15分ランでも3枚描く
       - name: Render short-range trails (15m; single source)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
         shell: bash
@@ -148,24 +151,22 @@ jobs:
           python plot_score_trails.py --metric usd     $COMMON_USD_BTC
           python plot_score_trails.py --metric btc     $COMMON_USD_BTC
           python plot_score_trails.py --metric usdxbtc $COMMON_USDXBTC
-      
+
           # _clean を従来名に揃える（後段の Verify/送信がこの名前を見る）
+          shopt -s nullglob
           U=$(ls -t score_trails_usd_*_clean.png     2>/dev/null | head -1 || true)
           B=$(ls -t score_trails_btc_*_clean.png     2>/dev/null | head -1 || true)
           X=$(ls -t score_trails_usdxbtc_*_clean.png 2>/dev/null | head -1 || true)
-          [[ -n "$U" ]] && cp -f -- "$U" score_trails_usd.png
-          [[ -n "$B" ]] && cp -f -- "$B" score_trails_btc.png
-          [[ -n "$X" ]] && cp -f -- "$X" score_trails_usdxbtc.png
-      
+          [[ -n "$U" ]] && cp -f -- "$U" score_trails_usd.png || true
+          [[ -n "$B" ]] && cp -f -- "$B" score_trails_btc.png || true
+          [[ -n "$X" ]] && cp -f -- "$X" score_trails_usdxbtc.png || true
+
           ls -l --time-style=long-iso score_trails_*_clean.png score_trails_*.png || true
-          
+
           # USD×BTC 平面のトレイル（48h）
           python plot_usd_btc_lines.py --hist data/trails_db.csv \
             --hours 48 --resample 1h --ema 3 --topn 16 --rank abs --right-labels \
             --out data/usd_btc_lines_48h.png
-
-
-
 
       # (daily only) 履歴ファイルが無ければ正しいヘッダーで初期化
       - name: Ensure trails history exists (daily)
@@ -325,7 +326,6 @@ jobs:
           awk -F',' -v OFS=',' -v ts="$ts" '{print ts,$0}' /tmp/merged.csv >> "$f"
           echo "[append] $(wc -l < /tmp/merged.csv) rows at $ts"
 
-
       # quiet legacy JSON warning (optional)
       - name: Quiet legacy JSON history warning
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 }}
@@ -343,10 +343,15 @@ jobs:
           set -euo pipefail
           HNOW=$(date -u +%H)
           TARGET='${{ inputs.render_daily_hour }}'
-          if [[ "$HNOW" == "$TARGET" ]]; then echo "render=1" >> "$GITHUB_OUTPUT"; else echo "render=0" >> "$GITHUB_OUTPUT"; fi
-          echo "UTC now=$HNOW target=$TARGET"
-          
-      # Render long-range（デイリーゲート）
+          FORCE='${{ inputs.force_render }}'
+          if [[ "$FORCE" == "true" || "$HNOW" == "$TARGET" ]]; then
+            echo "render=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "render=0" >> "$GITHUB_OUTPUT"
+          fi
+          echo "UTC now=$HNOW target=$TARGET force=$FORCE"
+
+      # ここから ↓ 修正①（長期レンダー後の柔軟コピー＆デバッグ）
       - name: Render long-range charts (daily gate)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 && steps.gate.outputs.render == '1' }}
         shell: bash
@@ -359,7 +364,6 @@ jobs:
           python plot_score_trails.py --metric btc $COMMON
           python plot_score_trails.py --metric usdxbtc $COMMON --ylim 1.6
 
-          # 生成物の在り処を柔軟に検出（直下 or charts/）
           shopt -s nullglob globstar
           U_SRC=$(ls -1t **/score_trails_usd_*_clean.png     2>/dev/null | head -1 || true)
           B_SRC=$(ls -1t **/score_trails_btc_*_clean.png     2>/dev/null | head -1 || true)
@@ -378,14 +382,13 @@ jobs:
             --hours "$SHOW" --resample 1H --ema 3 --topn 16 --highlight 6 \
             --out data/largecap_usd_vs_btc_trails.png
 
-
-      # Render monthly (30d/daily-agg)（デイリーゲート）
+      # 修正②（月次30d/daily-agg の柔軟コピー＆デバッグ）
       - name: Render monthly (30d) trails with daily aggregation (daily gate)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 && steps.gate.outputs.render == '1' }}
         shell: bash
         run: |
           set -euo pipefail
-          H=720        # 30d
+          H=720
           TOP=12
           COMMON="--hist data/trails_db.csv --hours $H --topn $TOP --rank abs --highlight 6 --resample 1d --ema 0 --right-labels --ylim 2.0"
 
@@ -393,7 +396,6 @@ jobs:
           python plot_score_trails.py --metric btc     $COMMON
           python plot_score_trails.py --metric usdxbtc $COMMON
 
-          # 出力パターンを柔軟に検出（直下 or charts/）
           shopt -s nullglob globstar
           U_SRC=$(ls -1t **/score_trails_usd_h${H}_top${TOP}_clean.png     2>/dev/null | head -1 || true)
           B_SRC=$(ls -1t **/score_trails_btc_h${H}_top${TOP}_clean.png     2>/dev/null | head -1 || true)
@@ -411,23 +413,18 @@ jobs:
             --hours 720 --resample 1D --ema 0 --topn 12 --rank abs --right-labels \
             --out data/usd_btc_lines_daily30.png
 
-
-
-
-      # 8) 迷子の生成物を data/ に集約（保険）
+      # 8) 迷子の生成物を data/ に集約（保険・charts/も拾う）
       - name: Normalize artifacts into data/
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob globstar
           mkdir -p data
-          # 直下および charts/ 配下の生成物を data/ に集約
           for f in **/largecap_*.png **/largecap_*.csv **/score_trails_*.png **/score_trails_*.csv; do
             [[ -e "$f" ]] && cp -f -- "$f" "data/$(basename "$f")"
           done
           echo "== DEBUG (data/ contents) =="
           ls -l --time-style=long-iso data/ | sed -n '1,200p'
-
 
       # 生成直後チェック（mtime/ハッシュ）
       - name: Verify artifacts freshness & diff
@@ -499,7 +496,6 @@ jobs:
             -F "file3=@${files[2]};type=image/png" \
             -F "file4=@${files[3]};type=image/png" \
             "$WEBHOOK"
-
 
       # 10) 生成物コミット
       - name: Commit & push artifacts
