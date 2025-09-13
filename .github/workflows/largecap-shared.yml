@@ -34,6 +34,7 @@ jobs:
       MPLBACKEND: Agg
       # if: から参照できるよう job 環境にまとめる
       WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL || secrets.DISCORD_WEBHOOK }}
+      ls -lt charts/score_trails_*_h*_top*_*clean.png 2>/dev/null | head
 
     steps:
       # 1) リポジトリ取得
