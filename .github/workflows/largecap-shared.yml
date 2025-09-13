@@ -420,11 +420,27 @@ jobs:
           set -euo pipefail
           shopt -s nullglob globstar
           mkdir -p data
+      
           for f in **/largecap_*.png **/largecap_*.csv **/score_trails_*.png **/score_trails_*.csv; do
-            [[ -e "$f" ]] && cp -f -- "$f" "data/$(basename "$f")"
+            # 存在チェック
+            [[ -e "$f" ]] || continue
+            # data/配下にあるものはスキップ（自分自身）
+            [[ "$f" == data/* ]] && continue
+      
+            dst="data/$(basename "$f")"
+            # 同一パス（実体）ならスキップ
+            if [[ "$(realpath -m "$f")" == "$(realpath -m "$dst")" ]]; then
+              echo "SKIP (same file): $f"
+              continue
+            fi
+      
+            cp -f -- "$f" "$dst"
+            echo "COPIED: $f -> $dst"
           done
+      
           echo "== DEBUG (data/ contents) =="
           ls -l --time-style=long-iso data/ | sed -n '1,200p'
+
 
       # 生成直後チェック（mtime/ハッシュ）
       - name: Verify artifacts freshness & diff
