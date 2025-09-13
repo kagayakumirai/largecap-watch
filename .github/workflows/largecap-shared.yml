@@ -345,26 +345,33 @@ jobs:
           TARGET='${{ inputs.render_daily_hour }}'
           if [[ "$HNOW" == "$TARGET" ]]; then echo "render=1" >> "$GITHUB_OUTPUT"; else echo "render=0" >> "$GITHUB_OUTPUT"; fi
           echo "UTC now=$HNOW target=$TARGET"
-
+          
+      # Render long-range（デイリーゲート）
       - name: Render long-range charts (daily gate)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 && steps.gate.outputs.render == '1' }}
         shell: bash
         run: |
           set -euo pipefail
-          SHOW='${{ inputs.trails_show_hours }}'   # 例: 720（整数の“時間”）
+          SHOW='${{ inputs.trails_show_hours }}'   # 例: 720
           COMMON="--hist data/trails_db.csv --hours $SHOW --topn 16 --rank abs --highlight 6 --resample 1h --ema 3 --right-labels --ylim 3.0"
+
           python plot_score_trails.py --metric usd $COMMON
           python plot_score_trails.py --metric btc $COMMON
-          python plot_score_trails.py --metric usdxbtc $COMMON --ylim 1.6   # ← 追加
-          # 改良版のファイル名(_clean)から互換名を用意
-          U=$(ls -t score_trails_usd_*_clean.png 2>/dev/null | head -1 || true)
-          B=$(ls -t score_trails_btc_*_clean.png 2>/dev/null | head -1 || true)
-          X=$(ls -t score_trails_usdxbtc_*_clean.png 2>/dev/null | head -1 || true)
-          
-          [[ -n "$U" ]] && cp -f -- "$U" score_trails_usd.png
-          [[ -n "$B" ]] && cp -f -- "$B" score_trails_btc.png
-          [[ -n "$X" ]] && cp -f -- "$X" score_trails_usdxbtc.png
-          ls -l --time-style=long-iso score_trails_*_clean.png score_trails_usd.png score_trails_btc.png || true
+          python plot_score_trails.py --metric usdxbtc $COMMON --ylim 1.6
+
+          # 生成物の在り処を柔軟に検出（直下 or charts/）
+          shopt -s nullglob globstar
+          U_SRC=$(ls -1t **/score_trails_usd_*_clean.png     2>/dev/null | head -1 || true)
+          B_SRC=$(ls -1t **/score_trails_btc_*_clean.png     2>/dev/null | head -1 || true)
+          X_SRC=$(ls -1t **/score_trails_usdxbtc_*_clean.png 2>/dev/null | head -1 || true)
+
+          mkdir -p data
+          [[ -n "${U_SRC:-}" ]] && cp -f -- "$U_SRC" data/score_trails_usd.png     || echo "MISSING usd *_clean.png"
+          [[ -n "${B_SRC:-}" ]] && cp -f -- "$B_SRC" data/score_trails_btc.png     || echo "MISSING btc *_clean.png"
+          [[ -n "${X_SRC:-}" ]] && cp -f -- "$X_SRC" data/score_trails_usdxbtc.png || echo "MISSING usdxbtc *_clean.png"
+
+          echo "== DEBUG (long-range sources) =="
+          ls -lt **/score_trails_*_clean.png 2>/dev/null | head || true
 
           # USD×BTC 平面のトレイル（長期）
           python plot_usd_btc_plane.py --hist data/trails_db.csv \
@@ -372,34 +379,38 @@ jobs:
             --out data/largecap_usd_vs_btc_trails.png
 
 
+      # Render monthly (30d/daily-agg)（デイリーゲート）
       - name: Render monthly (30d) trails with daily aggregation (daily gate)
         if: ${{ fromJSON(inputs.trails_keep_hours) > 0 && steps.gate.outputs.render == '1' }}
         shell: bash
         run: |
           set -euo pipefail
-          H=720        # 30日＝720h
-          TOP=12       # 見やすく少なめ
-          COMMON="--hist data/trails_db.csv --hours $H --topn $TOP \
-            --rank abs --highlight 6 --resample 1d --ema 0 --right-labels --ylim 2.0"
-      
+          H=720        # 30d
+          TOP=12
+          COMMON="--hist data/trails_db.csv --hours $H --topn $TOP --rank abs --highlight 6 --resample 1d --ema 0 --right-labels --ylim 2.0"
+
           python plot_score_trails.py --metric usd     $COMMON
           python plot_score_trails.py --metric btc     $COMMON
           python plot_score_trails.py --metric usdxbtc $COMMON
-      
-          # 出力ファイル（plot側は *_h{H}_top{TOP}_clean.png）を固定名へコピー
-          U="score_trails_usd_h${H}_top${TOP}_clean.png"
-          B="score_trails_btc_h${H}_top${TOP}_clean.png"
-          X="score_trails_usdxbtc_h${H}_top${TOP}_clean.png"
-      
-          [[ -f "$U" ]] && cp -f -- "$U" data/score_trails_usd_daily30.png
-          [[ -f "$B" ]] && cp -f -- "$B" data/score_trails_btc_daily30.png
-          [[ -f "$X" ]] && cp -f -- "$X" data/score_trails_usdxbtc_daily30.png
-      
-          ls -l --time-style=long-iso data/score_trails_*daily30.png || true
+
+          # 出力パターンを柔軟に検出（直下 or charts/）
+          shopt -s nullglob globstar
+          U_SRC=$(ls -1t **/score_trails_usd_h${H}_top${TOP}_clean.png     2>/dev/null | head -1 || true)
+          B_SRC=$(ls -1t **/score_trails_btc_h${H}_top${TOP}_clean.png     2>/dev/null | head -1 || true)
+          X_SRC=$(ls -1t **/score_trails_usdxbtc_h${H}_top${TOP}_clean.png 2>/dev/null | head -1 || true)
+
+          mkdir -p data
+          [[ -n "${U_SRC:-}" ]] && cp -f -- "$U_SRC" data/score_trails_usd_daily30.png     || echo "MISSING monthly usd *_h${H}_top${TOP}_clean.png"
+          [[ -n "${B_SRC:-}" ]] && cp -f -- "$B_SRC" data/score_trails_btc_daily30.png     || echo "MISSING monthly btc *_h${H}_top${TOP}_clean.png"
+          [[ -n "${X_SRC:-}" ]] && cp -f -- "$X_SRC" data/score_trails_usdxbtc_daily30.png || echo "MISSING monthly usdxbtc *_h${H}_top${TOP}_clean.png"
+
+          echo "== DEBUG (monthly sources) =="
+          ls -lt **/score_trails_*_h${H}_top${TOP}_clean.png 2>/dev/null | head || true
 
           python plot_usd_btc_lines.py --hist data/trails_db.csv \
-          --hours 720 --resample 1D --ema 0 --topn 12 --rank abs --right-labels \
-          --out data/usd_btc_lines_daily30.png
+            --hours 720 --resample 1D --ema 0 --topn 12 --rank abs --right-labels \
+            --out data/usd_btc_lines_daily30.png
+
 
 
 
@@ -408,11 +419,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
+          shopt -s nullglob globstar
           mkdir -p data
-          for f in largecap_*.png largecap_*.csv score_trails_*.png score_trails_*.csv; do
-            [[ -e "$f" ]] && mv -f "$f" data/
+          # 直下および charts/ 配下の生成物を data/ に集約
+          for f in **/largecap_*.png **/largecap_*.csv **/score_trails_*.png **/score_trails_*.csv; do
+            [[ -e "$f" ]] && cp -f -- "$f" "data/$(basename "$f")"
           done
+          echo "== DEBUG (data/ contents) =="
+          ls -l --time-style=long-iso data/ | sed -n '1,200p'
+
 
       # 生成直後チェック（mtime/ハッシュ）
       - name: Verify artifacts freshness & diff
