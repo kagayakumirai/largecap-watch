@@ -342,14 +342,26 @@ jobs:
         run: |
           set -euo pipefail
           HNOW=$(date -u +%H)
-          TARGET='${{ inputs.render_daily_hour }}'
+          NOW=$((10#$HNOW))   # 前ゼロ対策
+          TARGET=$((10#${{ inputs.render_daily_hour }}))
           FORCE='${{ inputs.force_render }}'
-          if [[ "$FORCE" == "true" || "$HNOW" == "$TARGET" ]]; then
+          # 入力が無ければ既定で3時間ウィンドウ
+          WINDOW_RAW='${{ inputs.render_daily_window_hours }}'
+          if [[ -z "${WINDOW_RAW}" ]]; then WINDOW=3; else WINDOW=$((10#${WINDOW_RAW})); fi
+
+          # mod 24 で経過時間を計算（ターゲットからの差）
+          DELTA=$(( (NOW - TARGET + 24) % 24 ))
+
+          if [[ "$FORCE" == "true" || ${DELTA} -lt ${WINDOW} ]]; then
             echo "render=1" >> "$GITHUB_OUTPUT"
+            STATUS="run"
           else
             echo "render=0" >> "$GITHUB_OUTPUT"
+            STATUS="skip"
           fi
-          echo "UTC now=$HNOW target=$TARGET force=$FORCE"
+
+          echo "UTC now=${NOW} target=${TARGET} window=${WINDOW}h delta=${DELTA} force=${FORCE} -> ${STATUS}"
+
 
       # ここから ↓ 修正①（長期レンダー後の柔軟コピー＆デバッグ）
       - name: Render long-range charts (daily gate)
